@@ -1,0 +1,594 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { admin, BUCKET, getClientByPortalToken, getClientById } from "@/lib/data";
+import { LAYOUTS, flattenTiles } from "@/lib/layouts";
+import { REQUEST_TYPES } from "@/lib/tickets";
+import { requireStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
+import * as mail from "@/lib/email";
+
+/* --------------------------------------------------------------- AI (Groq) */
+/* Everything AI in the app runs on Groq's free tier — see groqChatJSON and
+   groqTranscribe further down. `response_format: json_object` requires the
+   model to return a JSON *object*, so array results are wrapped in a key. */
+
+export interface Concept {
+  name: string;
+  direction: string;
+  attributes: string[];
+  palette: string[];
+  background: string;
+}
+
+export async function suggestConcepts(brief: string): Promise<Concept[]> {
+  await requireStudio();
+  const prompt = `You are a brand creative director. From this client briefing, propose 3 distinct stylescape concept directions.
+Briefing: """${brief}"""
+Return ONLY JSON in this exact shape, no prose, no markdown:
+{"concepts": [{"name": "short concept name", "direction": "one sentence on the visual world", "attributes": ["five","single","word","adjectives","here"], "palette": ["#111111","#222222","#333333","#444444","#555555","#666666"], "background": "short note on the intro-block treatment"}]}
+Exactly 3 concepts; each has exactly 5 attributes and 6 hex colours.`;
+  const r = await groqChatJSON<{ concepts: Concept[] }>(prompt);
+  return r.concepts ?? [];
+}
+
+export async function suggestPalette(title: string, attrs: string[]): Promise<string[]> {
+  await requireStudio();
+  const prompt = `Brand: "${title}". Attributes: ${attrs.filter(Boolean).join(", ")}.
+Return ONLY JSON in this shape: {"palette": ["#111111", ... exactly 6 hex colours ordered dark to light]}. No prose.`;
+  const r = await groqChatJSON<{ palette: string[] }>(prompt);
+  return r.palette ?? [];
+}
+
+/* ------------------------------------------------------------------- Auth */
+
+export async function login(formData: FormData): Promise<void> {
+  const pw = String(formData.get("password") || "");
+  const next = String(formData.get("next") || "/");
+  const expected = process.env.STUDIO_PASSWORD;
+  if (!expected || pw !== expected) redirect("/login?error=1");
+  const token = await computeToken(pw);
+  (await cookies()).set(AUTH_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  redirect(next.startsWith("/") ? next : "/");
+}
+
+export async function logout(): Promise<void> {
+  (await cookies()).delete(AUTH_COOKIE);
+  redirect("/login");
+}
+
+/* ----------------------------------------------------------------- Clients */
+
+export async function createClient(formData: FormData): Promise<void> {
+  await requireStudio();
+  const name = String(formData.get("name") || "").trim();
+  const company = String(formData.get("company") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const brandColor = String(formData.get("brandColor") || "").trim() || "#D2452B";
+  const brandFont = String(formData.get("brandFont") || "").trim();
+  const contactsRaw = String(formData.get("contacts") || "");
+  const logo = formData.get("logo");
+  if (!name) return; // ignore empty submits
+
+  let logoUrl: string | null = null;
+  if (logo instanceof File && logo.size > 0) {
+    if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
+    const ext = (logo.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const path = `client-logos/${Date.now()}.${ext}`;
+    const buffer = Buffer.from(await logo.arrayBuffer());
+    const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, { contentType: logo.type, upsert: true });
+    if (upErr) throw new Error(upErr.message);
+    logoUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+
+  const { data, error } = await admin
+    .from("clients")
+    .insert({ name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl })
+    .select("id, name, email, portal_token")
+    .single();
+  if (error || !data) throw new Error(error?.message || "Could not create client.");
+
+  const contactEmails = contactsRaw.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+  if (contactEmails.length) {
+    await admin.from("client_contacts").insert(contactEmails.map((e) => ({ client_id: data.id, email: e })));
+  }
+
+  // Best-effort notifications: welcome the primary contact + everyone invited.
+  await mail.emailClientWelcome({ name: data.name, email: data.email ?? "", portalToken: data.portal_token });
+  for (const e of contactEmails) {
+    await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token });
+  }
+  await mail.emailStudioNewClient(data.name);
+
+  revalidatePath("/");
+  redirect(`/client/${data.id}`);
+}
+
+export async function updateClient(formData: FormData): Promise<void> {
+  await requireStudio();
+  const id = String(formData.get("id") || "");
+  if (!id) throw new Error("Missing client.");
+  const name = String(formData.get("name") || "").trim();
+  const company = String(formData.get("company") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const brandColor = String(formData.get("brandColor") || "").trim() || "#D2452B";
+  const brandFont = String(formData.get("brandFont") || "").trim();
+  const contactsRaw = String(formData.get("contacts") || "");
+  const logo = formData.get("logo");
+
+  const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont };
+  if (name) patch.name = name;
+  if (logo instanceof File && logo.size > 0) {
+    if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
+    const ext = (logo.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const path = `client-logos/${id}-${Date.now()}.${ext}`;
+    const buffer = Buffer.from(await logo.arrayBuffer());
+    const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, { contentType: logo.type, upsert: true });
+    if (upErr) throw new Error(upErr.message);
+    patch.logo_url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+  const { error } = await admin.from("clients").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const contactEmails = contactsRaw.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+  if (contactEmails.length) {
+    await admin.from("client_contacts").insert(contactEmails.map((e) => ({ client_id: id, email: e })));
+  }
+  revalidatePath(`/client/${id}`);
+  revalidatePath("/");
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin.from("clients").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  redirect("/");
+}
+
+/* -------------------------------------------------------------- Stylescapes */
+
+export async function createStylescape(formData: FormData): Promise<void> {
+  await requireStudio();
+  const clientId = String(formData.get("clientId") || "") || null;
+  const { data, error } = await admin
+    .from("stylescapes")
+    .insert({
+      client_id: clientId,
+      title: "Untitled concept",
+      concept_note: "",
+      layout_key: "editorial",
+      attributes: ["", "", "", "", ""],
+      palette: LAYOUTS.editorial.palette,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(error?.message || "Could not create stylescape.");
+  if (clientId) revalidatePath(`/client/${clientId}`);
+  redirect(`/build/${data.id}`);
+}
+
+export interface SavePatch {
+  title?: string;
+  conceptNote?: string;
+  layoutKey?: string;
+  attributes?: string[];
+  palette?: string[];
+}
+
+export async function saveStylescape(id: string, patch: SavePatch): Promise<void> {
+  await requireStudio();
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.title !== undefined) row.title = patch.title;
+  if (patch.conceptNote !== undefined) row.concept_note = patch.conceptNote;
+  if (patch.layoutKey !== undefined) row.layout_key = patch.layoutKey;
+  if (patch.attributes !== undefined) row.attributes = patch.attributes;
+  if (patch.palette !== undefined) row.palette = patch.palette;
+  const { error } = await admin.from("stylescapes").update(row).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteStylescape(id: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin.from("stylescapes").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  redirect("/");
+}
+
+/* ----------------------------------------------------------------- Tickets */
+
+export async function createTicket(formData: FormData): Promise<void> {
+  const title = String(formData.get("title") || "").trim() || "Untitled request";
+  const description = String(formData.get("description") || "").trim();
+  const createdBy = formData.get("createdBy") === "client" ? "client" : "studio";
+  const portalToken = String(formData.get("portalToken") || "");
+  const form = {
+    type: String(formData.get("type") || ""),
+    deadline: String(formData.get("deadline") || ""),
+    references: String(formData.get("references") || ""),
+  };
+
+  // Resolve the client. For portal (client) submissions ALWAYS derive the
+  // client from the secret portal token — never trust a form-supplied id, or a
+  // client could inject tickets into another client's board.
+  let clientId: string;
+  let client = null;
+  if (createdBy === "client") {
+    if (!portalToken) throw new Error("Missing portal token.");
+    client = await getClientByPortalToken(portalToken);
+    if (!client) throw new Error("Invalid portal link.");
+    clientId = client.id;
+  } else {
+    await requireStudio();
+    clientId = String(formData.get("clientId") || "");
+    if (!clientId) throw new Error("Missing client.");
+  }
+
+  const priority = Math.max(0, Math.min(2, Number(formData.get("priority")) || 0));
+  const { error } = await admin.from("tickets").insert({
+    client_id: clientId,
+    title,
+    description,
+    form,
+    status: "backlog",
+    created_by: createdBy,
+    priority,
+  });
+  if (error) throw new Error(error.message);
+
+  // Notify on client-submitted requests.
+  if (createdBy === "client" && client) {
+    await mail.emailRequestReceived(
+      { name: client.name, email: client.email, portalToken: client.portalToken },
+      title
+    );
+    await mail.emailStudioNewRequest(client.name, title);
+  }
+
+  revalidatePath(`/client/${clientId}`);
+  if (createdBy === "client") {
+    revalidatePath(`/portal/${portalToken}`);
+  } else {
+    redirect(`/client/${clientId}`);
+  }
+}
+
+export async function moveTicket(ticketId: string, clientId: string, status: string): Promise<void> {
+  await requireStudio();
+
+  // Read current status/title so we only email on a real transition.
+  const { data: current } = await admin
+    .from("tickets").select("status, title").eq("id", ticketId).single();
+
+  if (status === "in_progress") {
+    const { data: existing } = await admin
+      .from("tickets")
+      .select("id")
+      .eq("client_id", clientId)
+      .eq("status", "in_progress")
+      .neq("id", ticketId);
+    if (existing && existing.length > 0) {
+      throw new Error("This client already has a ticket in progress. Move that one out first.");
+    }
+  }
+  const { error } = await admin
+    .from("tickets")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", ticketId);
+  if (error) {
+    // 23505 = unique_violation on the "one in_progress per client" index,
+    // possible if two moves race past the pre-check above.
+    if (error.code === "23505") {
+      throw new Error("This client already has a ticket in progress. Move that one out first.");
+    }
+    throw new Error(error.message);
+  }
+
+  // Client-facing status emails, best-effort, only on an actual change.
+  if (current && current.status !== status) {
+    const client = await getClientById(clientId);
+    if (client) {
+      const lite = { name: client.name, email: client.email, portalToken: client.portalToken };
+      const title = current.title || "your request";
+      if (status === "in_progress") await mail.emailInProgress(lite, title);
+      else if (status === "review") await mail.emailReadyForReview(lite, title);
+      else if (status === "done") await mail.emailDone(lite, title);
+    }
+  }
+
+  revalidatePath(`/client/${clientId}`);
+  revalidatePath(`/ticket/${ticketId}`);
+  revalidatePath("/");
+}
+
+export async function deleteTicket(ticketId: string, clientId: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin.from("tickets").delete().eq("id", ticketId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/client/${clientId}`);
+  redirect(`/client/${clientId}`);
+}
+
+/* ------------------------------------------------------------- Time tracking */
+
+async function stopRunningEntries(): Promise<void> {
+  const { data } = await admin.from("time_entries").select("id, started_at").is("ended_at", null);
+  const now = Date.now();
+  for (const e of data ?? []) {
+    const dur = Math.max(0, Math.round((now - new Date(e.started_at).getTime()) / 1000));
+    const { error } = await admin
+      .from("time_entries")
+      .update({ ended_at: new Date().toISOString(), duration_seconds: dur })
+      .eq("id", e.id);
+    if (error) throw new Error(`Could not stop timer: ${error.message}`);
+  }
+}
+
+export async function startTimer(ticketId: string, clientId: string): Promise<void> {
+  await requireStudio();
+  await stopRunningEntries(); // only one timer runs at a time
+  const { error } = await admin.from("time_entries").insert({ ticket_id: ticketId });
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  revalidatePath(`/client/${clientId}`);
+  revalidatePath(`/ticket/${ticketId}`);
+}
+
+export async function stopTimer(ticketId?: string, clientId?: string): Promise<void> {
+  await requireStudio();
+  await stopRunningEntries();
+  revalidatePath("/");
+  if (clientId) revalidatePath(`/client/${clientId}`);
+  if (ticketId) revalidatePath(`/ticket/${ticketId}`);
+}
+
+/* ------------------------------------------------ Stylescape from a ticket */
+
+export async function attachStylescapeToTicket(stylescapeId: string, ticketId: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin
+    .from("stylescapes")
+    .update({ ticket_id: ticketId })
+    .eq("id", stylescapeId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/ticket/${ticketId}`);
+  revalidatePath("/stylescapes");
+}
+
+export async function createStylescapeForTicket(ticketId: string): Promise<void> {
+  await requireStudio();
+  const { data: ticket } = await admin
+    .from("tickets")
+    .select("client_id, title")
+    .eq("id", ticketId)
+    .single();
+  if (!ticket) throw new Error("Ticket not found.");
+
+  const { data, error } = await admin
+    .from("stylescapes")
+    .insert({
+      client_id: ticket.client_id,
+      ticket_id: ticketId,
+      title: ticket.title || "Untitled concept",
+      concept_note: "",
+      layout_key: "editorial",
+      attributes: ["", "", "", "", ""],
+      palette: LAYOUTS.editorial.palette,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(error?.message || "Could not create stylescape.");
+  redirect(`/build/${data.id}`);
+}
+
+/* ---------------------------------------------------- Voice → structured brief */
+
+async function groqTranscribe(file: File): Promise<string> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("GROQ_API_KEY is not set on the server.");
+  const fd = new FormData();
+  fd.set("file", file, file.name || "request.webm");
+  fd.set("model", process.env.GROQ_WHISPER_MODEL || "whisper-large-v3");
+  fd.set("response_format", "json");
+  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}` },
+    body: fd,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Transcription failed (${res.status}). ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { text?: string };
+  return (data.text ?? "").trim();
+}
+
+async function groqChatJSON<T>(prompt: string, maxTokens = 1200): Promise<T> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("GROQ_API_KEY is not set on the server.");
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.GROQ_LLM_MODEL || "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Formatting failed (${res.status}). ${detail.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const text = data.choices?.[0]?.message?.content ?? "{}";
+  return JSON.parse(text) as T;
+}
+
+/* The brief the DESIGN TEAM sees — the studio's standard 12-section structure.
+   The client never sees this or the raw transcript. */
+const BRIEF_STRUCTURE = `1) Enquadramento — o que é a marca/produto/pedido e porque existe
+2) Problema a resolver
+3) Objetivos — objetivo principal + objetivos secundários
+4) Público e perceção pretendida — públicos-alvo + atributos/perceção desejada
+5) Proposta conceptual — ideia-chave / ponto de partida criativo
+6) Âmbito do projeto — entregáveis organizados por fases
+7) Fora do âmbito
+8) Requisitos e restrições
+9) Critérios de sucesso
+10) Processo proposto — checkpoints
+11) Inputs necessários do cliente
+12) Entregáveis finais`;
+
+const briefPrompt = (transcript: string) => `You are a senior brand strategist at a design studio, writing a creative brief FOR THE DESIGN TEAM based on what a client described out loud.
+Client transcript:
+"""${transcript}"""
+Write a complete, professional brief that follows EXACTLY this section structure:
+${BRIEF_STRUCTURE}
+Rules:
+- Write in the SAME LANGUAGE the client spoke (translate the section titles into that language too).
+- Base it on what the client said, expanded with reasonable professional inference appropriate to the request.
+- Keep it proportional: a small request stays concise; a full brand project is more detailed.
+- Where the client did not specify something, either make a sensible professional assumption or write "A confirmar com o cliente." NEVER write questions addressed to the reader.
+- Be concrete and actionable. Do not contradict the client.
+Return ONLY JSON: {"title": "3-6 word project title", "type": "best match from [${REQUEST_TYPES.join(", ")}]", "priority": 0 for normal / 1 for high / 2 for urgent — infer from the client's tone and deadline, "deadline": "date/timeframe if the client mentioned one, else empty string", "references": "any references the client mentioned, else empty string", "brief": "the full brief as text, all 12 numbered sections, blank line between sections"}`;
+
+interface BriefResult { title: string; type: string; priority: number; deadline: string; references: string; brief: string; }
+
+/** Client voice flow: upload audio → transcribe → write the brief → create the
+    ticket, all server-side. The client never sees the transcript or the brief. */
+export async function submitVoiceRequest(formData: FormData): Promise<void> {
+  const portalToken = String(formData.get("portalToken") || "");
+  const audio = formData.get("audio");
+  if (!(audio instanceof File)) throw new Error("No audio recording received.");
+  if (!portalToken) throw new Error("Missing portal token.");
+  const client = await getClientByPortalToken(portalToken);
+  if (!client) throw new Error("Invalid portal link.");
+
+  const transcript = await groqTranscribe(audio);
+  if (!transcript) throw new Error("Could not hear anything in that recording. Try again.");
+  const draft = await groqChatJSON<BriefResult>(briefPrompt(transcript), 3000);
+
+  const title = (draft.title || "Voice request").trim();
+  const priority = Math.max(0, Math.min(2, Number(draft.priority) || 0));
+  const { error } = await admin.from("tickets").insert({
+    client_id: client.id,
+    title,
+    description: draft.brief || "",
+    form: { type: draft.type || "", deadline: draft.deadline || "", references: draft.references || "" },
+    status: "backlog",
+    created_by: "client",
+    priority,
+  });
+  if (error) throw new Error(error.message);
+
+  await mail.emailRequestReceived({ name: client.name, email: client.email, portalToken: client.portalToken }, title);
+  await mail.emailStudioNewRequest(client.name, title);
+
+  revalidatePath(`/client/${client.id}`);
+  revalidatePath(`/portal/${portalToken}`);
+}
+
+/* --------------------------------------------------------------- Tile images */
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml", "image/avif",
+];
+
+export async function uploadTileImage(formData: FormData): Promise<string> {
+  await requireStudio();
+  const id = String(formData.get("id"));
+  const tileKey = String(formData.get("tileKey"));
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("No file provided.");
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) throw new Error("Only image files are allowed.");
+
+  // Only allow writing to a tile key that actually exists in this stylescape's layout.
+  const { data: ss } = await admin.from("stylescapes").select("layout_key").eq("id", id).single();
+  if (!ss) throw new Error("Stylescape not found.");
+  if (!flattenTiles(ss.layout_key).some((t) => t.id === tileKey)) throw new Error("Invalid tile.");
+
+  const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg");
+  const path = `${id}/${tileKey}-${Date.now()}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { error: upErr } = await admin.storage
+    .from(BUCKET)
+    .upload(path, buffer, { contentType: file.type, upsert: true });
+  if (upErr) throw new Error(upErr.message);
+
+  const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+  const url = pub.publicUrl;
+
+  const { error: dbErr } = await admin
+    .from("tiles")
+    .upsert(
+      { stylescape_id: id, tile_key: tileKey, image_url: url },
+      { onConflict: "stylescape_id,tile_key" }
+    );
+  if (dbErr) throw new Error(dbErr.message);
+
+  revalidatePath(`/build/${id}`);
+  return url;
+}
+
+export async function removeTileImage(id: string, tileKey: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin
+    .from("tiles")
+    .update({ image_url: null })
+    .eq("stylescape_id", id)
+    .eq("tile_key", tileKey);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/build/${id}`);
+}
+
+/* -------------------------------------------------------------- Client review */
+
+export interface ReviewPayload {
+  reviewerName: string;
+  overallScore: number;
+  overallNote: string;
+  tiles: Record<string, { score: number; note: string }>;
+}
+
+export async function submitReview(token: string, payload: ReviewPayload): Promise<void> {
+  const { data: ss } = await admin
+    .from("stylescapes")
+    .select("id")
+    .eq("share_token", token)
+    .single();
+  if (!ss) throw new Error("Stylescape not found.");
+
+  const clamp = (n: number) => Math.max(0, Math.min(10, Math.round(Number(n) || 0)));
+
+  const rows = [
+    {
+      stylescape_id: ss.id,
+      tile_key: null,
+      score: clamp(payload.overallScore),
+      note: payload.overallNote,
+      reviewer_name: payload.reviewerName,
+    },
+    ...Object.entries(payload.tiles).map(([tile_key, r]) => ({
+      stylescape_id: ss.id,
+      tile_key,
+      score: clamp(r.score),
+      note: r.note,
+      reviewer_name: payload.reviewerName,
+    })),
+  ];
+
+  const { error } = await admin.from("reviews").insert(rows);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/build/${ss.id}`);
+}

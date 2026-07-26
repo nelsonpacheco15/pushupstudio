@@ -1,0 +1,549 @@
+import "server-only";
+import { createClient } from "@supabase/supabase-js";
+import type { Stylescape } from "./layouts";
+import type { Ticket, TicketStatus } from "./tickets";
+
+/* Server-only Supabase client using the service-role key. Because every DB
+   operation runs here (never in the browser), we can lock the tables down with
+   RLS and no public policies — the service role bypasses RLS. */
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!url || !serviceKey) {
+  // Fail loud in the server logs rather than silently returning empty data.
+  console.warn(
+    "[stylescape] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. " +
+      "Copy .env.local.example to .env.local and fill them in."
+  );
+}
+
+// Fallbacks keep the app importable/buildable without secrets; real queries
+// simply fail at runtime until the env vars are set.
+export const admin = createClient(
+  url || "https://placeholder.supabase.co",
+  serviceKey || "placeholder-key",
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
+
+export const BUCKET = "stylescape-images";
+
+interface Row {
+  id: string;
+  client_id: string | null;
+  title: string;
+  concept_note: string | null;
+  layout_key: string;
+  attributes: string[] | null;
+  palette: string[] | null;
+  share_token: string;
+  created_at: string;
+}
+
+interface TileRow {
+  tile_key: string;
+  image_url: string | null;
+}
+
+function toStylescape(row: Row, tiles: TileRow[]): Stylescape {
+  const images: Record<string, string> = {};
+  for (const t of tiles) if (t.image_url) images[t.tile_key] = t.image_url;
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    title: row.title,
+    conceptNote: row.concept_note ?? "",
+    layoutKey: row.layout_key,
+    attributes: row.attributes ?? [],
+    palette: row.palette ?? [],
+    shareToken: row.share_token,
+    images,
+  };
+}
+
+export interface ClientRecord {
+  id: string;
+  name: string;
+  company: string;
+  email: string;
+  logoUrl: string | null;
+  brandColor: string;
+  brandFont: string;
+  portalToken: string;
+}
+
+const CLIENT_COLS = "id, name, company, email, logo_url, brand_color, brand_font, portal_token";
+
+interface ClientRow {
+  id: string; name: string; company: string | null; email: string | null;
+  logo_url: string | null; brand_color: string | null; brand_font: string | null; portal_token: string;
+}
+
+function mapClient(data: ClientRow): ClientRecord {
+  return {
+    id: data.id, name: data.name, company: data.company ?? "", email: data.email ?? "",
+    logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
+    portalToken: data.portal_token,
+  };
+}
+
+export interface ClientContact { id: string; name: string; email: string; }
+
+export async function getClientContacts(clientId: string): Promise<ClientContact[]> {
+  const { data } = await admin
+    .from("client_contacts")
+    .select("id, name, email")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((c) => ({ id: c.id, name: c.name ?? "", email: c.email }));
+}
+
+export interface ClientSummary extends ClientRecord {
+  createdAt: string;
+  ticketCounts: Record<TicketStatus, number>;
+  openCount: number;
+  lastCompletedAt: string | null; // most recent time a ticket was marked done
+  weekSeconds: number;
+  monthSeconds: number;
+  oldestOpenAt: string | null;    // created_at of the oldest not-done ticket
+}
+
+export async function listClients(): Promise<ClientSummary[]> {
+  const { data: rows } = await admin
+    .from("clients")
+    .select(`${CLIENT_COLS}, created_at`)
+    .order("created_at", { ascending: false });
+  if (!rows) return [];
+
+  const { data: tk } = await admin.from("tickets").select("id, client_id, status, updated_at, created_at");
+  const ticketClient = new Map<string, string>();
+  for (const t of tk ?? []) ticketClient.set(t.id, t.client_id);
+
+  // Per-client time for this week + this month (overlap of each entry with the window).
+  const now = new Date();
+  const nowMs = now.getTime();
+  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+  const startWeek = new Date(startToday); startWeek.setDate(startToday.getDate() - ((now.getDay() + 6) % 7));
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const { data: entries } = await admin
+    .from("time_entries")
+    .select("ticket_id, started_at, ended_at")
+    .or(`ended_at.is.null,ended_at.gte.${startMonth.toISOString()}`);
+  const overlap = (a: number, b: number, w: number) => Math.max(0, Math.min(b, nowMs) - Math.max(a, w)) / 1000;
+  const week: Record<string, number> = {};
+  const month: Record<string, number> = {};
+  for (const e of entries ?? []) {
+    const cid = ticketClient.get(e.ticket_id);
+    if (!cid) continue;
+    const a = new Date(e.started_at).getTime();
+    const b = e.ended_at ? new Date(e.ended_at).getTime() : nowMs;
+    week[cid] = (week[cid] ?? 0) + overlap(a, b, startWeek.getTime());
+    month[cid] = (month[cid] ?? 0) + overlap(a, b, startMonth.getTime());
+  }
+
+  return rows.map((c) => {
+    const counts = emptyCounts();
+    let open = 0;
+    let lastCompletedAt: string | null = null;
+    let oldestOpenAt: string | null = null;
+    for (const t of tk ?? []) {
+      if (t.client_id !== c.id) continue;
+      counts[t.status as TicketStatus] = (counts[t.status as TicketStatus] ?? 0) + 1;
+      if (t.status !== "done") {
+        open += 1;
+        if (!oldestOpenAt || t.created_at < oldestOpenAt) oldestOpenAt = t.created_at;
+      }
+      if (t.status === "done" && (!lastCompletedAt || t.updated_at > lastCompletedAt)) lastCompletedAt = t.updated_at;
+    }
+    return {
+      ...mapClient(c as ClientRow),
+      createdAt: c.created_at,
+      ticketCounts: counts,
+      openCount: open,
+      lastCompletedAt,
+      weekSeconds: Math.round(week[c.id] ?? 0),
+      monthSeconds: Math.round(month[c.id] ?? 0),
+      oldestOpenAt,
+    };
+  });
+}
+
+export async function getClientById(id: string): Promise<ClientRecord | null> {
+  const { data } = await admin.from("clients").select(CLIENT_COLS).eq("id", id).single();
+  return data ? mapClient(data as ClientRow) : null;
+}
+
+export async function getClientByPortalToken(token: string): Promise<ClientRecord | null> {
+  const { data } = await admin.from("clients").select(CLIENT_COLS).eq("portal_token", token).single();
+  return data ? mapClient(data as ClientRow) : null;
+}
+
+/* ------------------------------------------------------------------ Tickets */
+
+function emptyCounts(): Record<TicketStatus, number> {
+  return { backlog: 0, ready: 0, in_progress: 0, review: 0, done: 0 };
+}
+
+interface TicketRow {
+  id: string;
+  client_id: string;
+  title: string;
+  description: string | null;
+  form: Record<string, string> | null;
+  status: TicketStatus;
+  priority: number;
+  position: number;
+  created_by: "studio" | "client";
+  created_at: string;
+  updated_at: string;
+}
+
+function mapTicket(r: TicketRow): Ticket {
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    title: r.title,
+    description: r.description ?? "",
+    form: r.form ?? {},
+    status: r.status,
+    priority: r.priority,
+    position: r.position,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function listTickets(clientId: string): Promise<Ticket[]> {
+  const { data } = await admin
+    .from("tickets")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("priority", { ascending: false })
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((r) => mapTicket(r as TicketRow));
+}
+
+export async function getTicket(id: string): Promise<Ticket | null> {
+  const { data } = await admin.from("tickets").select("*").eq("id", id).single();
+  return data ? mapTicket(data as TicketRow) : null;
+}
+
+export interface TimeEntry {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  note: string;
+}
+
+export async function getTicketTimeEntries(ticketId: string): Promise<TimeEntry[]> {
+  const { data } = await admin
+    .from("time_entries")
+    .select("id, started_at, ended_at, duration_seconds, note")
+    .eq("ticket_id", ticketId)
+    .order("started_at", { ascending: false });
+  return (data ?? []).map((e) => ({
+    id: e.id,
+    startedAt: e.started_at,
+    endedAt: e.ended_at,
+    durationSeconds: e.duration_seconds,
+    note: e.note ?? "",
+  }));
+}
+
+/** Total tracked seconds for a ticket, including any running timer. */
+export async function getTicketTotalSeconds(ticketId: string): Promise<number> {
+  const entries = await getTicketTimeEntries(ticketId);
+  const now = Date.now();
+  return entries.reduce((sum, e) => {
+    if (e.durationSeconds != null) return sum + e.durationSeconds;
+    if (!e.endedAt) return sum + Math.floor((now - new Date(e.startedAt).getTime()) / 1000);
+    return sum;
+  }, 0);
+}
+
+/* -------------------------------------------------------------- Time stats */
+
+export interface RunningTimer {
+  ticketId: string;
+  clientId: string;
+  ticketTitle: string;
+  clientName: string;
+  startedAt: string;
+}
+
+export async function getRunningTimer(): Promise<RunningTimer | null> {
+  const { data } = await admin
+    .from("time_entries")
+    .select("ticket_id, started_at")
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const ticket = await getTicket(data.ticket_id);
+  if (!ticket) return null;
+  const client = await getClientById(ticket.clientId);
+  return {
+    ticketId: ticket.id,
+    clientId: ticket.clientId,
+    ticketTitle: ticket.title,
+    clientName: client?.name ?? "Client",
+    startedAt: data.started_at,
+  };
+}
+
+export interface TimeStats {
+  todaySeconds: number;
+  weekSeconds: number;
+  monthSeconds: number;
+  doneThisWeek: number;
+  inProgressCount: number;
+  queueDepth: number;       // tickets ready to start across all clients
+  awaitingClient: number;   // tickets in review (waiting on client)
+  avgTurnaroundSeconds: number; // avg created→done for done tickets this month
+}
+
+export async function getTimeStats(): Promise<TimeStats> {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+  const startWeek = new Date(startToday); startWeek.setDate(startToday.getDate() - ((now.getDay() + 6) % 7));
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const { data: entries } = await admin
+    .from("time_entries")
+    .select("started_at, ended_at")
+    .or(`ended_at.is.null,ended_at.gte.${startMonth.toISOString()}`);
+
+  const overlap = (startMs: number, endMs: number, windowStart: number) =>
+    Math.max(0, Math.min(endMs, nowMs) - Math.max(startMs, windowStart)) / 1000;
+
+  let today = 0, week = 0, month = 0;
+  for (const e of entries ?? []) {
+    const startMs = new Date(e.started_at).getTime();
+    const endMs = e.ended_at ? new Date(e.ended_at).getTime() : nowMs;
+    today += overlap(startMs, endMs, startToday.getTime());
+    week += overlap(startMs, endMs, startWeek.getTime());
+    month += overlap(startMs, endMs, startMonth.getTime());
+  }
+
+  const { data: tickets } = await admin.from("tickets").select("status, created_at, updated_at");
+  let doneThisWeek = 0, inProgress = 0, queue = 0, awaiting = 0, turnSum = 0, turnCount = 0;
+  for (const t of tickets ?? []) {
+    if (t.status === "in_progress") inProgress++;
+    if (t.status === "ready") queue++;
+    if (t.status === "review") awaiting++;
+    if (t.status === "done") {
+      if (t.updated_at >= startWeek.toISOString()) doneThisWeek++;
+      if (t.updated_at >= startMonth.toISOString()) {
+        turnSum += (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()) / 1000;
+        turnCount++;
+      }
+    }
+  }
+
+  return {
+    todaySeconds: Math.round(today),
+    weekSeconds: Math.round(week),
+    monthSeconds: Math.round(month),
+    doneThisWeek,
+    inProgressCount: inProgress,
+    queueDepth: queue,
+    awaitingClient: awaiting,
+    avgTurnaroundSeconds: turnCount ? Math.round(turnSum / turnCount) : 0,
+  };
+}
+
+export interface DayHours { label: string; seconds: number; }
+
+/** Seconds tracked per day for the current week (Mon–Sun). */
+export async function getWeeklyHours(): Promise<DayHours[]> {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+  const startWeek = new Date(startToday); startWeek.setDate(startToday.getDate() - ((now.getDay() + 6) % 7));
+
+  const { data: entries } = await admin
+    .from("time_entries")
+    .select("started_at, ended_at")
+    .or(`ended_at.is.null,ended_at.gte.${startWeek.toISOString()}`);
+
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const days: DayHours[] = labels.map((label, i) => {
+    const s = new Date(startWeek); s.setDate(startWeek.getDate() + i);
+    const e = new Date(s); e.setDate(s.getDate() + 1);
+    return { label, seconds: 0, _s: s.getTime(), _e: Math.min(e.getTime(), nowMs) } as DayHours & { _s: number; _e: number };
+  });
+  for (const en of entries ?? []) {
+    const a = new Date(en.started_at).getTime();
+    const b = en.ended_at ? new Date(en.ended_at).getTime() : nowMs;
+    for (const d of days as (DayHours & { _s: number; _e: number })[]) {
+      d.seconds += Math.max(0, Math.min(b, d._e) - Math.max(a, d._s)) / 1000;
+    }
+  }
+  return days.map((d) => ({ label: d.label, seconds: Math.round(d.seconds) }));
+}
+
+export interface UpNext {
+  ticketId: string;
+  title: string;
+  clientId: string;
+  clientName: string;
+  status: TicketStatus;
+  priority: number;
+}
+
+/** The single highest-priority ticket to pick up next (ready first, then
+    backlog), across all clients. Priority is set by the client. */
+export async function getUpNext(): Promise<UpNext | null> {
+  const { data } = await admin
+    .from("tickets")
+    .select("id, title, client_id, status, priority, created_at")
+    .in("status", ["ready", "backlog"])
+    .order("priority", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (!data || data.length === 0) return null;
+  // Ready-to-start leads, then highest priority, then oldest.
+  const rank = (s: string) => (s === "ready" ? 0 : 1);
+  const sorted = [...data].sort((a, b) =>
+    (rank(a.status) - rank(b.status)) || (b.priority - a.priority) ||
+    (a.created_at < b.created_at ? -1 : 1));
+  const t = sorted[0];
+  const client = await getClientById(t.client_id);
+  return {
+    ticketId: t.id, title: t.title, clientId: t.client_id,
+    clientName: client?.name ?? "Client", status: t.status as TicketStatus, priority: t.priority,
+  };
+}
+
+export interface StylescapeSummary {
+  id: string;
+  title: string;
+  layoutKey: string;
+  shareToken: string;
+  createdAt: string;
+  filled: number;
+  reviewCount: number;
+}
+
+export async function listStylescapes(clientId?: string): Promise<StylescapeSummary[]> {
+  let q = admin
+    .from("stylescapes")
+    .select("id, title, layout_key, share_token, created_at")
+    .order("created_at", { ascending: false });
+  if (clientId) q = q.eq("client_id", clientId);
+  const { data: rows } = await q;
+  if (!rows) return [];
+
+  const ids = rows.map((r) => r.id);
+  const { data: tiles } = await admin
+    .from("tiles")
+    .select("stylescape_id, image_url")
+    .in("stylescape_id", ids.length ? ids : ["-"]);
+  const { data: reviews } = await admin
+    .from("reviews")
+    .select("stylescape_id")
+    .in("stylescape_id", ids.length ? ids : ["-"]);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    layoutKey: r.layout_key,
+    shareToken: r.share_token,
+    createdAt: r.created_at,
+    filled: (tiles ?? []).filter((t) => t.stylescape_id === r.id && t.image_url).length,
+    reviewCount: (reviews ?? []).filter((rv) => rv.stylescape_id === r.id).length,
+  }));
+}
+
+export async function getStylescapeById(id: string): Promise<Stylescape | null> {
+  const { data: row } = await admin.from("stylescapes").select("*").eq("id", id).single();
+  if (!row) return null;
+  const { data: tiles } = await admin
+    .from("tiles")
+    .select("tile_key, image_url")
+    .eq("stylescape_id", id);
+  return toStylescape(row as Row, (tiles ?? []) as TileRow[]);
+}
+
+export interface StylescapeListItem {
+  id: string;
+  title: string;
+  layoutKey: string;
+  clientId: string | null;
+  clientName: string;
+  ticketId: string | null;
+}
+
+export async function listAllStylescapes(): Promise<StylescapeListItem[]> {
+  const { data } = await admin
+    .from("stylescapes")
+    .select("id, title, layout_key, client_id, ticket_id, created_at")
+    .order("created_at", { ascending: false });
+  if (!data) return [];
+  const { data: clients } = await admin.from("clients").select("id, name");
+  const nameFor = (id: string | null) => clients?.find((c) => c.id === id)?.name ?? "—";
+  return data.map((s) => ({
+    id: s.id,
+    title: s.title,
+    layoutKey: s.layout_key,
+    clientId: s.client_id,
+    clientName: nameFor(s.client_id),
+    ticketId: s.ticket_id,
+  }));
+}
+
+/** A client's stylescapes not yet attached to any ticket (for the attach picker). */
+export async function listUnattachedStylescapes(clientId: string): Promise<{ id: string; title: string }[]> {
+  const { data } = await admin
+    .from("stylescapes")
+    .select("id, title")
+    .eq("client_id", clientId)
+    .is("ticket_id", null)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((s) => ({ id: s.id, title: s.title }));
+}
+
+export async function getStylescapeForTicket(ticketId: string): Promise<{ id: string; title: string } | null> {
+  const { data } = await admin
+    .from("stylescapes")
+    .select("id, title")
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? { id: data.id, title: data.title } : null;
+}
+
+export async function getStylescapeByToken(token: string): Promise<Stylescape | null> {
+  const { data: row } = await admin
+    .from("stylescapes")
+    .select("*")
+    .eq("share_token", token)
+    .single();
+  if (!row) return null;
+  const { data: tiles } = await admin
+    .from("tiles")
+    .select("tile_key, image_url")
+    .eq("stylescape_id", row.id);
+  return toStylescape(row as Row, (tiles ?? []) as TileRow[]);
+}
+
+export interface ReviewRow {
+  tile_key: string | null;
+  score: number;
+  note: string | null;
+  reviewer_name: string | null;
+  created_at: string;
+}
+
+export async function getReviews(stylescapeId: string): Promise<ReviewRow[]> {
+  const { data } = await admin
+    .from("reviews")
+    .select("tile_key, score, note, reviewer_name, created_at")
+    .eq("stylescape_id", stylescapeId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as ReviewRow[];
+}
