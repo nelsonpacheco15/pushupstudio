@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getTicket, getClientById, getTicketTimeEntries, getTicketTotalSeconds,
-  getRunningTimer, getStylescapeForTicket, listUnattachedStylescapes,
+  getRunningTimer, getStylescapeForTicket, listUnattachedStylescapes, getTicketFeedback,
 } from "@/lib/data";
-import { STATUS_LABELS, STATUS_DOT, formatDuration } from "@/lib/tickets";
+import { STATUS_LABELS, STATUS_DOT, formatDuration, driveEmbed } from "@/lib/tickets";
 import { TimerButton } from "@/components/LiveTimer";
 import TicketActions from "@/components/TicketActions";
+import DeliverableEditor from "@/components/DeliverableEditor";
 import { createStylescapeForTicket, attachStylescapeToTicket } from "@/app/actions";
 import { INK, PANEL, LINE, ACCENT, MUTE, PAPER, ghostBtn } from "@/lib/theme";
 
@@ -19,14 +20,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const ticket = await getTicket(id);
   if (!ticket) notFound();
   const isStylescapeTicket = ticket.form.type === STYLESCAPE_TYPE;
-  const [client, entries, total, running, stylescape, unattached] = await Promise.all([
+  const [client, entries, total, running, stylescape, unattached, feedback] = await Promise.all([
     getClientById(ticket.clientId),
     getTicketTimeEntries(id),
     getTicketTotalSeconds(id),
     getRunningTimer(),
     getStylescapeForTicket(id),
     isStylescapeTicket ? listUnattachedStylescapes(ticket.clientId) : Promise.resolve([]),
+    getTicketFeedback(id),
   ]);
+  const embed = driveEmbed(ticket.deliverableUrl);
   const isRunning = running?.ticketId === id;
   const completedTotal = entries.reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
 
@@ -108,6 +111,36 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* deliverable — the design the client reviews */}
+        <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
+          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE, marginBottom: 12 }}>DELIVERABLE · GOOGLE DRIVE</div>
+          <DeliverableEditor ticketId={id} url={ticket.deliverableUrl} />
+          {embed && (
+            <iframe src={embed} title="Design preview"
+              style={{ width: "100%", height: 420, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 14, background: "#000" }} />
+          )}
+          <div style={{ fontSize: 12, color: MUTE, marginTop: 10 }}>
+            The client sees this in their portal and can rate + approve / request changes. The Drive link must be shared “Anyone with the link · Viewer”.
+          </div>
+        </div>
+
+        {/* client feedback */}
+        {feedback.length > 0 && (
+          <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
+            <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE, marginBottom: 4 }}>CLIENT FEEDBACK</div>
+            {feedback.map((f) => (
+              <div key={f.id} style={{ borderTop: `1px solid ${LINE}`, padding: "12px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {f.score != null && <span style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, color: ACCENT }}>{f.score}/10</span>}
+                  {f.decision && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: 0.5, color: ACCENT }}>{f.decision === "approved" ? "✓ APPROVED" : "↻ CHANGES REQUESTED"}</span>}
+                  <span style={{ marginLeft: "auto", fontSize: 11, color: MUTE }}>{new Date(f.createdAt).toLocaleString()}</span>
+                </div>
+                {f.note && <div style={{ fontSize: 13, color: "#cfcabb", marginTop: 8, lineHeight: 1.5 }}>{f.note}</div>}
+              </div>
+            ))}
           </div>
         )}
 

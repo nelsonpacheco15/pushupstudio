@@ -30,8 +30,19 @@ export interface Ticket {
   priority: number;
   position: number;
   createdBy: "studio" | "client";
+  deliverableUrl: string | null; // Google Drive link to the design
   createdAt: string;
   updatedAt: string;
+}
+
+/** Turn a Google Drive share link into an embeddable iframe URL (file or folder). */
+export function driveEmbed(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const folder = url.match(/\/folders\/([-\w]+)/);
+  if (folder) return `https://drive.google.com/embeddedfolderview?id=${folder[1]}#grid`;
+  const file = url.match(/\/file\/d\/([-\w]+)/) || url.match(/[?&]id=([-\w]+)/);
+  if (file) return `https://drive.google.com/file/d/${file[1]}/preview`;
+  return url.startsWith("http") ? url : null;
 }
 
 /** Options offered in the client request form. */

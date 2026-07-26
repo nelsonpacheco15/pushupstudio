@@ -329,6 +329,47 @@ export async function deleteTicket(ticketId: string, clientId: string): Promise<
   redirect(`/client/${clientId}`);
 }
 
+/** Studio: attach / update the Google Drive design link on a ticket. */
+export async function setDeliverableUrl(ticketId: string, url: string): Promise<void> {
+  await requireStudio();
+  const { error } = await admin.from("tickets").update({ deliverable_url: url.trim() || null }).eq("id", ticketId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/ticket/${ticketId}`);
+}
+
+/** Client: evaluate the delivered design from the portal. */
+export async function submitTicketFeedback(
+  token: string, ticketId: string, score: number, note: string, decision: "approved" | "changes"
+): Promise<void> {
+  const client = await getClientByPortalToken(token);
+  if (!client) throw new Error("Invalid portal link.");
+  const { data: ticket } = await admin.from("tickets").select("id, title").eq("id", ticketId).eq("client_id", client.id).single();
+  if (!ticket) throw new Error("Ticket not found.");
+
+  const clampedScore = Math.max(0, Math.min(10, Math.round(Number(score) || 0)));
+  const { error } = await admin.from("ticket_feedback").insert({
+    ticket_id: ticketId, score: clampedScore, note: note || "", decision,
+  });
+  if (error) throw new Error(error.message);
+
+  // Approve → Done. Request changes → In Progress (falls back to Ready if the
+  // client already has a ticket in progress, to respect the WIP rule).
+  const newStatus = decision === "approved" ? "done" : "in_progress";
+  const { error: mErr } = await admin
+    .from("tickets").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", ticketId);
+  if (mErr?.code === "23505") {
+    await admin.from("tickets").update({ status: "ready", updated_at: new Date().toISOString() }).eq("id", ticketId);
+  }
+
+  await mail.emailStudioNewRequest(client.name, `Feedback on "${ticket.title}" — ${decision === "approved" ? "APPROVED ✓" : "changes requested"}`);
+
+  revalidatePath(`/portal/${token}/${ticketId}`);
+  revalidatePath(`/portal/${token}`);
+  revalidatePath(`/ticket/${ticketId}`);
+  revalidatePath(`/client/${client.id}`);
+  revalidatePath("/");
+}
+
 /* ------------------------------------------------------------- Time tracking */
 
 async function stopRunningEntries(): Promise<void> {

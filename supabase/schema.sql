@@ -55,8 +55,21 @@ create table if not exists public.tickets (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+alter table public.tickets add column if not exists deliverable_url text;
 create index if not exists tickets_client_idx on public.tickets(client_id);
 create index if not exists tickets_status_idx on public.tickets(status);
+
+-- Client evaluation of a delivered design, on a ticket.
+create table if not exists public.ticket_feedback (
+  id         uuid primary key default gen_random_uuid(),
+  ticket_id  uuid not null references public.tickets(id) on delete cascade,
+  score      int check (score between 0 and 10),
+  note       text default '',
+  decision   text check (decision in ('approved','changes')),
+  created_at timestamptz not null default now()
+);
+create index if not exists ticket_feedback_ticket_idx on public.ticket_feedback(ticket_id);
+alter table public.ticket_feedback enable row level security;
 create unique index if not exists tickets_one_in_progress_per_client
   on public.tickets(client_id) where status = 'in_progress';
 

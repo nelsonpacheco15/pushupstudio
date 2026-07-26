@@ -212,6 +212,7 @@ interface TicketRow {
   priority: number;
   position: number;
   created_by: "studio" | "client";
+  deliverable_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -227,9 +228,33 @@ function mapTicket(r: TicketRow): Ticket {
     priority: r.priority,
     position: r.position,
     createdBy: r.created_by,
+    deliverableUrl: r.deliverable_url ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+export interface TicketFeedback {
+  id: string; score: number | null; note: string; decision: "approved" | "changes" | null; createdAt: string;
+}
+
+export async function getTicketFeedback(ticketId: string): Promise<TicketFeedback[]> {
+  const { data } = await admin
+    .from("ticket_feedback")
+    .select("id, score, note, decision, created_at")
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((f) => ({
+    id: f.id, score: f.score, note: f.note ?? "", decision: f.decision, createdAt: f.created_at,
+  }));
+}
+
+/** Load a ticket only if it belongs to the client identified by the portal token. */
+export async function getPortalTicket(token: string, ticketId: string): Promise<Ticket | null> {
+  const client = await getClientByPortalToken(token);
+  if (!client) return null;
+  const { data } = await admin.from("tickets").select("*").eq("id", ticketId).eq("client_id", client.id).single();
+  return data ? mapTicket(data as TicketRow) : null;
 }
 
 export async function listTickets(clientId: string): Promise<Ticket[]> {

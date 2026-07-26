@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getClientByPortalToken, listTickets } from "@/lib/data";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus } from "@/lib/tickets";
@@ -43,10 +44,12 @@ export default async function PortalPage({ params }: { params: Promise<{ token: 
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {col.map((t) => (
-                    <div key={t.id} style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 10, padding: 12 }}>
+                    <Link key={t.id} href={`/portal/${token}/${t.id}`}
+                      style={{ display: "block", background: PANEL, border: `1px solid ${t.deliverableUrl ? PAPER : LINE}`, borderRadius: 10, padding: 12 }}>
                       {t.form?.type && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: MUTE }}>{t.form.type}</div>}
                       <div style={{ fontWeight: 600, fontSize: 13.5, marginTop: 3 }}>{t.title}</div>
-                    </div>
+                      {t.deliverableUrl && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: PAPER, marginTop: 6 }}>◆ design ready — tap to review</div>}
+                    </Link>
                   ))}
                   {col.length === 0 && <div style={{ fontSize: 12, color: MUTE, opacity: 0.5 }}>—</div>}
                 </div>
