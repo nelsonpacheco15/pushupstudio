@@ -74,6 +74,7 @@ export async function createClient(formData: FormData): Promise<void> {
   const brandColor = String(formData.get("brandColor") || "").trim() || "#D2452B";
   const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
+  const language = formData.get("language") === "pt" ? "pt" : "en";
   const logo = formData.get("logo");
   if (!name) return; // ignore empty submits
 
@@ -90,7 +91,7 @@ export async function createClient(formData: FormData): Promise<void> {
 
   const { data, error } = await admin
     .from("clients")
-    .insert({ name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl })
+    .insert({ name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language })
     .select("id, name, email, portal_token")
     .single();
   if (error || !data) throw new Error(error?.message || "Could not create client.");
@@ -101,11 +102,11 @@ export async function createClient(formData: FormData): Promise<void> {
   }
 
   // Best-effort notifications: welcome the primary contact + everyone invited.
-  await mail.emailClientWelcome({ name: data.name, email: data.email ?? "", portalToken: data.portal_token });
+  await mail.emailClientWelcome({ name: data.name, email: data.email ?? "", portalToken: data.portal_token, language });
   for (const e of contactEmails) {
-    await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token });
+    await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token, language });
   }
-  await mail.emailStudioNewClient(data.name);
+  await mail.emailStudioNewClient(data.name, company, language);
 
   revalidatePath("/");
   redirect(`/client/${data.id}`);
@@ -121,9 +122,10 @@ export async function updateClient(formData: FormData): Promise<void> {
   const brandColor = String(formData.get("brandColor") || "").trim() || "#D2452B";
   const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
+  const language = formData.get("language") === "pt" ? "pt" : "en";
   const logo = formData.get("logo");
 
-  const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont };
+  const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont, language };
   if (name) patch.name = name;
   if (logo instanceof File && logo.size > 0) {
     if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
@@ -143,6 +145,16 @@ export async function updateClient(formData: FormData): Promise<void> {
   }
   revalidatePath(`/client/${id}`);
   revalidatePath("/");
+}
+
+export async function setOnboardingStep(clientId: string, key: string, done: boolean): Promise<void> {
+  await requireStudio();
+  const { data } = await admin.from("clients").select("onboarding").eq("id", clientId).single();
+  const current = (data?.onboarding as Record<string, boolean>) ||
+    { registration: true, onboarding: false, whatsapp: false, drive: false };
+  const { error } = await admin.from("clients").update({ onboarding: { ...current, [key]: done } }).eq("id", clientId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/client/${clientId}`);
 }
 
 export async function deleteClient(id: string): Promise<void> {
@@ -247,7 +259,7 @@ export async function createTicket(formData: FormData): Promise<void> {
   // Notify on client-submitted requests.
   if (createdBy === "client" && client) {
     await mail.emailRequestReceived(
-      { name: client.name, email: client.email, portalToken: client.portalToken },
+      { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language },
       title
     );
     await mail.emailStudioNewRequest(client.name, title);
@@ -296,7 +308,7 @@ export async function moveTicket(ticketId: string, clientId: string, status: str
   if (current && current.status !== status) {
     const client = await getClientById(clientId);
     if (client) {
-      const lite = { name: client.name, email: client.email, portalToken: client.portalToken };
+      const lite = { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language };
       const title = current.title || "your request";
       if (status === "in_progress") await mail.emailInProgress(lite, title);
       else if (status === "review") await mail.emailReadyForReview(lite, title);
@@ -491,7 +503,7 @@ export async function submitVoiceRequest(formData: FormData): Promise<void> {
   });
   if (error) throw new Error(error.message);
 
-  await mail.emailRequestReceived({ name: client.name, email: client.email, portalToken: client.portalToken }, title);
+  await mail.emailRequestReceived({ name: client.name, email: client.email, portalToken: client.portalToken, language: client.language }, title);
   await mail.emailStudioNewRequest(client.name, title);
 
   revalidatePath(`/client/${client.id}`);

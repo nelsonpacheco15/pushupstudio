@@ -43,6 +43,11 @@ export default function ClientBoardHeader({ client }: { client: ClientRecord }) 
             <input name="company" defaultValue={client.company} style={dsInput} />
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Primary email</label>
             <input name="email" type="email" defaultValue={client.email} style={dsInput} />
+            <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Language (emails &amp; portal)</label>
+            <select name="language" defaultValue={client.language} style={dsInput}>
+              <option value="en">English</option>
+              <option value="pt">Português</option>
+            </select>
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Invite more people (one email per line)</label>
             <textarea name="contacts" placeholder="teammate@company.com" style={dsTextarea} rows={2} />
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Logo {client.logoUrl ? "(replaces current)" : ""}</label>

@@ -13,10 +13,10 @@ export default function StudioNav({ active }: { active: "overview" | "stylescape
     <aside style={{ width: 232, flex: "0 0 232px", background: DS.bg2, borderRight: `1px solid ${DS.border}`,
       minHeight: "100vh", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0 }}>
       <div style={{ padding: "2px 10px 8px" }}>
-        <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 17, letterSpacing: -0.2, color: DS.text }}>
-          PushUP <span style={{ color: DS.accent }}>Studio</span>
-        </div>
-        <div style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 1, color: DS.faint, marginTop: 2 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="https://jsyxwuwmzgwlpstdcpkm.supabase.co/storage/v1/object/public/stylescape-images/brand/logo-white.png"
+          alt="PushUP Studio" style={{ height: 17, display: "block" }} />
+        <div style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 1, color: DS.faint, marginTop: 8 }}>
           [ STUDIO&nbsp;OS ]
         </div>
       </div>

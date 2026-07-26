@@ -21,6 +21,9 @@ alter table public.clients add column if not exists email text default '';
 alter table public.clients add column if not exists logo_url text;
 alter table public.clients add column if not exists brand_color text default '#D2452B';
 alter table public.clients add column if not exists brand_font text default '';
+alter table public.clients add column if not exists onboarding jsonb not null
+  default '{"registration":true,"onboarding":false,"whatsapp":false,"drive":false}'::jsonb;
+alter table public.clients add column if not exists language text not null default 'en';
 create unique index if not exists clients_portal_token_idx on public.clients(portal_token);
 
 -- People invited from the client's company (they get the portal link).

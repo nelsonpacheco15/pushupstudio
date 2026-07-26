@@ -14,8 +14,10 @@ export default async function LoginPage({
       alignItems: "center", justifyContent: "center", padding: 20 }}>
       <form action={login} style={{ width: 360, maxWidth: "100%", background: PANEL,
         border: `1px solid ${LINE}`, borderRadius: 14, padding: 26 }}>
-        <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 22 }}>PushUP Studio</div>
-        <div style={{ fontSize: 12.5, color: MUTE, margin: "4px 0 18px" }}>Studio login</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="https://jsyxwuwmzgwlpstdcpkm.supabase.co/storage/v1/object/public/stylescape-images/brand/logo-white.png"
+          alt="PushUP Studio" style={{ height: 20, display: "block" }} />
+        <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, letterSpacing: 1, color: MUTE, margin: "12px 0 18px" }}>[ STUDIO LOGIN ]</div>
         <input type="hidden" name="next" value={next ?? "/"} />
         <input name="password" type="password" placeholder="Studio password" autoFocus
           style={inp} />

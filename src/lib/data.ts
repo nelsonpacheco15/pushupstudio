@@ -60,6 +60,8 @@ function toStylescape(row: Row, tiles: TileRow[]): Stylescape {
   };
 }
 
+export type Lang = "en" | "pt";
+
 export interface ClientRecord {
   id: string;
   name: string;
@@ -68,22 +70,39 @@ export interface ClientRecord {
   logoUrl: string | null;
   brandColor: string;
   brandFont: string;
+  language: Lang;
   portalToken: string;
 }
 
-const CLIENT_COLS = "id, name, company, email, logo_url, brand_color, brand_font, portal_token";
+// "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
+// client queries — mapClient defaults anything missing.
+const CLIENT_COLS = "*";
 
 interface ClientRow {
   id: string; name: string; company: string | null; email: string | null;
-  logo_url: string | null; brand_color: string | null; brand_font: string | null; portal_token: string;
+  logo_url: string | null; brand_color: string | null; brand_font: string | null;
+  language: string | null; portal_token: string; created_at?: string;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
   return {
     id: data.id, name: data.name, company: data.company ?? "", email: data.email ?? "",
     logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
-    portalToken: data.portal_token,
+    language: (data.language === "pt" ? "pt" : "en"), portalToken: data.portal_token,
   };
+}
+
+export interface OnboardingState { registration: boolean; onboarding: boolean; whatsapp: boolean; drive: boolean; }
+export const ONBOARDING_KEYS: (keyof OnboardingState)[] = ["registration", "onboarding", "whatsapp", "drive"];
+export const ONBOARDING_LABELS: Record<keyof OnboardingState, string> = {
+  registration: "Registration", onboarding: "Onboarding", whatsapp: "WhatsApp channel", drive: "Drive folder",
+};
+const DEFAULT_ONBOARDING: OnboardingState = { registration: true, onboarding: false, whatsapp: false, drive: false };
+
+export async function getOnboarding(clientId: string): Promise<OnboardingState> {
+  const { data, error } = await admin.from("clients").select("onboarding").eq("id", clientId).single();
+  if (error || !data?.onboarding) return DEFAULT_ONBOARDING; // column not migrated yet → safe default
+  return { ...DEFAULT_ONBOARDING, ...(data.onboarding as Partial<OnboardingState>) };
 }
 
 export interface ClientContact { id: string; name: string; email: string; }
@@ -110,7 +129,7 @@ export interface ClientSummary extends ClientRecord {
 export async function listClients(): Promise<ClientSummary[]> {
   const { data: rows } = await admin
     .from("clients")
-    .select(`${CLIENT_COLS}, created_at`)
+    .select("*")
     .order("created_at", { ascending: false });
   if (!rows) return [];
 

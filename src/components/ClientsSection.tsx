@@ -112,6 +112,11 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
         <input name="company" placeholder="Company name" style={dsInput} />
         <label style={{ ...lbl, marginTop: 12 }}>Primary email</label>
         <input name="email" type="email" placeholder="main@company.com" style={dsInput} />
+        <label style={{ ...lbl, marginTop: 12 }}>Language (emails &amp; portal)</label>
+        <select name="language" defaultValue="en" style={dsInput}>
+          <option value="en">English</option>
+          <option value="pt">Português</option>
+        </select>
         <label style={{ ...lbl, marginTop: 12 }}>Invite people (one email per line)</label>
         <textarea name="contacts" placeholder="teammate@company.com&#10;another@company.com" style={dsTextarea} rows={2} />
         <label style={{ ...lbl, marginTop: 12 }}>Logo</label>
