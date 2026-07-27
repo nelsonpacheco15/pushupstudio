@@ -20,7 +20,7 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
-        <h2 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 22, letterSpacing: -0.5, margin: 0 }}>Clients</h2>
+        <h2 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 22, letterSpacing: -0.5, margin: 0 }}>Athletes</h2>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div style={{ display: "flex", background: DS.card2, border: `1px solid ${DS.border}`, borderRadius: 999, padding: 3 }}>
             {(["week", "month"] as const).map((p) => (
@@ -32,14 +32,14 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
               </button>
             ))}
           </div>
-          <button onClick={() => setNewOpen(true)} style={dsBtn}>+ New client</button>
+          <button onClick={() => setNewOpen(true)} style={dsBtn}>+ New athlete</button>
         </div>
       </div>
 
       {sorted.length === 0 ? (
         <div style={{ ...dsCard, padding: 52, textAlign: "center", color: DS.mute }}>
-          <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 20, color: DS.text, marginBottom: 6 }}>No clients yet</div>
-          Add your first client to start their board.
+          <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 20, color: DS.text, marginBottom: 6 }}>No athletes yet</div>
+          Add your first athlete to start their board.
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
@@ -104,7 +104,7 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
       zIndex: 60, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
       <form action={createClient} onClick={(e) => e.stopPropagation()}
         style={{ ...dsCard, padding: 26, width: 480, maxWidth: "100%", marginTop: 44 }}>
-        <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 22, letterSpacing: -0.4, marginBottom: 16 }}>New client</div>
+        <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 22, letterSpacing: -0.4, marginBottom: 16 }}>New athlete</div>
 
         <label style={lbl}>Client / brand name</label>
         <input name="name" required placeholder="e.g. Estrela da Manhã" style={dsInput} />
@@ -117,6 +117,19 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
           <option value="en">English</option>
           <option value="pt">Português</option>
         </select>
+        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Plan</label>
+            <select name="plan" defaultValue="growth" style={dsInput}>
+              <option value="growth">Growth — €800/mo</option>
+              <option value="scale">Scale — €1299/mo</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Locker Room password</label>
+            <input name="password" type="text" placeholder="Set a password" autoComplete="off" style={dsInput} />
+          </div>
+        </div>
         <label style={{ ...lbl, marginTop: 12 }}>Invite people (one email per line)</label>
         <textarea name="contacts" placeholder="teammate@company.com&#10;another@company.com" style={dsTextarea} rows={2} />
         <label style={{ ...lbl, marginTop: 12 }}>Logo</label>

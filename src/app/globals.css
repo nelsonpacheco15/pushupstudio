@@ -17,3 +17,5 @@ a { color: inherit; text-decoration: none; }
 textarea, input, button { font-family: inherit; }
 
 ::placeholder { color: #6b6659; }
+
+@keyframes ds-blink { 50% { opacity: 0; } }

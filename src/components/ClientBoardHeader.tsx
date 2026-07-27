@@ -48,6 +48,19 @@ export default function ClientBoardHeader({ client }: { client: ClientRecord }) 
               <option value="en">English</option>
               <option value="pt">Português</option>
             </select>
+            <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Plan</label>
+                <select name="plan" defaultValue={client.plan} style={dsInput}>
+                  <option value="growth">Growth — €800/mo</option>
+                  <option value="scale">Scale — €1299/mo</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Locker Room password</label>
+                <input name="password" type="text" placeholder="Leave blank to keep" autoComplete="off" style={dsInput} />
+              </div>
+            </div>
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Invite more people (one email per line)</label>
             <textarea name="contacts" placeholder="teammate@company.com" style={dsTextarea} rows={2} />
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Logo {client.logoUrl ? "(replaces current)" : ""}</label>

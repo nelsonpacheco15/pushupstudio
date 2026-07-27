@@ -72,7 +72,7 @@ export default function VoiceRequest({ portalToken }: { portalToken: string }) {
 
   return (
     <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 20 }}>
-      <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, marginBottom: 4 }}>New request</div>
+      <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, marginBottom: 4 }}>New rep</div>
       <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 16 }}>
         Just talk — describe what you need and we’ll take it from there.
       </div>

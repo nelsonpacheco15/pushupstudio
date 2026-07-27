@@ -81,12 +81,12 @@ export default function KanbanBoard({
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE }}>
-          {items.filter((t) => t.status !== "done").length} open · drag cards between columns · one In Progress at a time
+          THE CIRCUIT · {items.filter((t) => t.status !== "done").length} open reps · drag cards between columns · one In Progress at a time
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={copyPortal} style={ghostBtn}>{copied ? "Copied ✓" : "Copy client portal link"}</button>
+          <button onClick={copyPortal} style={ghostBtn}>{copied ? "Copied ✓" : "Copy Locker Room link"}</button>
           <button onClick={() => setNewOpen(true)} style={{ ...primaryBtn, width: "auto", marginTop: 0, padding: "9px 16px" }}>
-            + New ticket
+            + New rep
           </button>
         </div>
       </div>
@@ -185,7 +185,7 @@ function NewTicketModal({ clientId, onClose }: { clientId: string; onClose: () =
         style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 22, width: 460, maxWidth: "100%" }}>
         <input type="hidden" name="clientId" value={clientId} />
         <input type="hidden" name="createdBy" value="studio" />
-        <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 20, marginBottom: 14 }}>New ticket</div>
+        <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 20, marginBottom: 14 }}>New rep</div>
         <input name="title" required placeholder="Title" style={inp} />
         <select name="type" style={{ ...inp, marginTop: 8 }}>
           {REQUEST_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}

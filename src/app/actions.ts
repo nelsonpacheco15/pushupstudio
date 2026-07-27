@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { admin, BUCKET, getClientByPortalToken, getClientById } from "@/lib/data";
+import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail } from "@/lib/data";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
 import { requireStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
+import { hashPassword, signClient, CLIENT_COOKIE } from "@/lib/clientAuth";
 import * as mail from "@/lib/email";
 
 /* --------------------------------------------------------------- AI (Groq) */
@@ -64,6 +65,29 @@ export async function logout(): Promise<void> {
   redirect("/login");
 }
 
+/* ------------------------------------------------------- Client accounts */
+
+export async function clientLogin(formData: FormData): Promise<void> {
+  const email = String(formData.get("email") || "");
+  const password = String(formData.get("password") || "");
+  const auth = await getClientAuthByEmail(email);
+  const ok = auth && auth.passwordHash === (await hashPassword(password));
+  if (!ok) redirect("/enter?error=1");
+  (await cookies()).set(CLIENT_COOKIE, await signClient(auth!.id), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  redirect("/me");
+}
+
+export async function clientLogout(): Promise<void> {
+  (await cookies()).delete(CLIENT_COOKIE);
+  redirect("/enter");
+}
+
 /* ----------------------------------------------------------------- Clients */
 
 export async function createClient(formData: FormData): Promise<void> {
@@ -75,6 +99,8 @@ export async function createClient(formData: FormData): Promise<void> {
   const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
   const language = formData.get("language") === "pt" ? "pt" : "en";
+  const plan = String(formData.get("plan") || "").trim() || null;
+  const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
   if (!name) return; // ignore empty submits
 
@@ -89,9 +115,11 @@ export async function createClient(formData: FormData): Promise<void> {
     logoUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
   }
 
+  const insertRow: Record<string, unknown> = { name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language, plan };
+  if (password) insertRow.password_hash = await hashPassword(password);
   const { data, error } = await admin
     .from("clients")
-    .insert({ name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language })
+    .insert(insertRow)
     .select("id, name, email, portal_token")
     .single();
   if (error || !data) throw new Error(error?.message || "Could not create client.");
@@ -123,10 +151,14 @@ export async function updateClient(formData: FormData): Promise<void> {
   const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
   const language = formData.get("language") === "pt" ? "pt" : "en";
+  const plan = String(formData.get("plan") || "").trim();
+  const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
 
   const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont, language };
   if (name) patch.name = name;
+  if (plan) patch.plan = plan;
+  if (password) patch.password_hash = await hashPassword(password);
   if (logo instanceof File && logo.size > 0) {
     if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
     const ext = (logo.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg");

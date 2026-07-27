@@ -13,7 +13,7 @@ export default function RequestForm({ clientId, portalToken }: { clientId: strin
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="createdBy" value="client" />
       <input type="hidden" name="portalToken" value={portalToken} />
-      <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, marginBottom: 4 }}>New request</div>
+      <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, marginBottom: 4 }}>New rep</div>
       <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 14 }}>Tell us what you need. It lands in your backlog and we pick it up.</div>
       <input name="title" required placeholder="What do you need? (title)" style={inp} />
       <select name="type" style={{ ...inp, marginTop: 8 }}>

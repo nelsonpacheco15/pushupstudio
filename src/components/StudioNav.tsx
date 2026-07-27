@@ -4,7 +4,7 @@ import { authDisabled } from "@/lib/auth";
 import { DS } from "@/lib/theme";
 
 const ITEMS = [
-  { key: "overview", label: "Overview", href: "/", icon: "▚" },
+  { key: "overview", label: "HQ", href: "/", icon: "▚" },
   { key: "stylescapes", label: "Stylescapes", href: "/stylescapes", icon: "❋" },
 ];
 

@@ -72,6 +72,7 @@ export interface ClientRecord {
   brandFont: string;
   language: Lang;
   portalToken: string;
+  plan: string;
 }
 
 // "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
@@ -82,6 +83,7 @@ interface ClientRow {
   id: string; name: string; company: string | null; email: string | null;
   logo_url: string | null; brand_color: string | null; brand_font: string | null;
   language: string | null; portal_token: string; created_at?: string;
+  password_hash?: string | null; plan?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -89,6 +91,7 @@ function mapClient(data: ClientRow): ClientRecord {
     id: data.id, name: data.name, company: data.company ?? "", email: data.email ?? "",
     logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
     language: (data.language === "pt" ? "pt" : "en"), portalToken: data.portal_token,
+    plan: data.plan || "growth",
   };
 }
 
@@ -189,6 +192,17 @@ export async function listClients(): Promise<ClientSummary[]> {
 export async function getClientById(id: string): Promise<ClientRecord | null> {
   const { data } = await admin.from("clients").select(CLIENT_COLS).eq("id", id).single();
   return data ? mapClient(data as ClientRow) : null;
+}
+
+/** For client login: look up a client by email and return its id + password hash.
+    Returns null if no client with that email or no password set. */
+export async function getClientAuthByEmail(email: string): Promise<{ id: string; passwordHash: string } | null> {
+  const clean = email.trim().toLowerCase();
+  if (!clean) return null;
+  const { data } = await admin.from("clients").select("id, email, password_hash").ilike("email", clean).limit(1);
+  const row = data?.[0] as { id: string; password_hash?: string | null } | undefined;
+  if (!row || !row.password_hash) return null;
+  return { id: row.id, passwordHash: row.password_hash };
 }
 
 export async function getClientByPortalToken(token: string): Promise<ClientRecord | null> {

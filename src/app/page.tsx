@@ -40,9 +40,9 @@ export default async function Overview() {
       <StudioNav active="overview" />
       <main style={{ flex: 1, minWidth: 0, padding: "34px 40px", maxWidth: 1280, margin: "0 auto", position: "relative" }}>
         <DitherCorner />
-        <div style={mono({ fontSize: 11, letterSpacing: 1.2, color: DS.mute })}>┌─ STUDIO / OVERVIEW ───────</div>
+        <div style={mono({ fontSize: 11, letterSpacing: 1.2, color: DS.mute })}>┌─ STUDIO / HQ ───────</div>
         <h1 style={{ fontFamily: DS.pixel, fontWeight: 700, fontSize: 56, letterSpacing: 1, textTransform: "uppercase",
-          margin: "10px 0 30px", lineHeight: 1, color: DS.text }}>Overview</h1>
+          margin: "10px 0 30px", lineHeight: 1, color: DS.text }}>HQ</h1>
 
         {running && (
           <RunningBanner ticketId={running.ticketId} clientId={running.clientId} ticketTitle={running.ticketTitle}
