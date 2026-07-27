@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
+import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail, getClientRecipients,
   createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions,
   notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
   getSettings, saveSettings, planAmountFromSettings,
@@ -635,10 +635,9 @@ export async function createTicket(formData: FormData): Promise<void> {
 
   // Notify on client-submitted requests.
   if (createdBy === "client" && client) {
-    await mail.emailRequestReceived(
-      { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language },
-      title
-    );
+    for (const email of await getClientRecipients(client.id)) {
+      await mail.emailRequestReceived({ name: client.name, email, portalToken: client.portalToken, language: client.language }, title);
+    }
     await mail.emailStudioNewRequest(client.name, title);
     await notify({ audience: "studio", clientId, type: "new_request",
       title: `New request from ${client.name}`, body: title, link: created ? `/ticket/${created.id}` : `/client/${clientId}` });
@@ -687,11 +686,15 @@ export async function moveTicket(ticketId: string, clientId: string, status: str
   if (current && current.status !== status) {
     const client = await getClientById(clientId);
     if (client) {
-      const lite = { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language };
       const title = current.title || "your request";
-      if (status === "in_progress") await mail.emailInProgress(lite, title);
-      else if (status === "review") await mail.emailReadyForReview(lite, title);
-      else if (status === "done") await mail.emailDone(lite, title);
+      // Notify the primary email AND every contact/seat added to the project.
+      const recipients = await getClientRecipients(clientId);
+      for (const email of recipients) {
+        const lite = { name: client.name, email, portalToken: client.portalToken, language: client.language };
+        if (status === "in_progress") await mail.emailInProgress(lite, title);
+        else if (status === "review") await mail.emailReadyForReview(lite, title);
+        else if (status === "done") await mail.emailDone(lite, title);
+      }
 
       if (status === "in_progress") await notify({ audience: "client", clientId, type: "in_progress", title: "We're on it 💪", body: title, link: `/me/${ticketId}` });
       else if (status === "review") await notify({ audience: "client", clientId, type: "review", title: "Ready for your review", body: title, link: `/me/${ticketId}` });
@@ -753,22 +756,19 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
   if (row) {
     const client = await getClientById(row.client_id);
     if (client) {
-      const lite = { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language };
       const title = row.title || "your request";
       const n = version?.version ?? 1;
-      if (n > 1) {
-        // Revision after a change request: email the client the new version + echo their last request.
-        const { data: fb } = await admin.from("ticket_feedback").select("note")
-          .eq("ticket_id", ticketId).eq("decision", "changes").order("created_at", { ascending: false }).limit(1);
-        const changeNote = (fb?.[0] as { note?: string } | undefined)?.note || "";
-        await mail.emailNewVersion(lite, title, n, changeNote);
-        await notify({ audience: "client", clientId: client.id, type: "new_version",
-          title: `New version ready (v${n})`, body: title, link: `/me/${ticketId}` });
-      } else {
-        await mail.emailReadyForReview(lite, title);
-        await notify({ audience: "client", clientId: client.id, type: "review",
-          title: "Your design is ready to review", body: title, link: `/me/${ticketId}` });
+      const recipients = await getClientRecipients(client.id);
+      const changeNote = n > 1
+        ? ((await admin.from("ticket_feedback").select("note").eq("ticket_id", ticketId).eq("decision", "changes").order("created_at", { ascending: false }).limit(1)).data?.[0] as { note?: string } | undefined)?.note || ""
+        : "";
+      for (const email of recipients) {
+        const lite = { name: client.name, email, portalToken: client.portalToken, language: client.language };
+        if (n > 1) await mail.emailNewVersion(lite, title, n, changeNote);
+        else await mail.emailReadyForReview(lite, title);
       }
+      await notify({ audience: "client", clientId: client.id, type: n > 1 ? "new_version" : "review",
+        title: n > 1 ? `New version ready (v${n})` : "Your design is ready to review", body: title, link: `/me/${ticketId}` });
     }
     revalidatePath(`/client/${row.client_id}`);
   }

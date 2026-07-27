@@ -242,6 +242,16 @@ export async function getClientAuthByEmail(email: string): Promise<{ id: string;
   return null;
 }
 
+/** All email recipients for a client: the primary email + every contact/seat email. */
+export async function getClientRecipients(clientId: string): Promise<string[]> {
+  const [cRes, ctRes] = await Promise.all([
+    admin.from("clients").select("email").eq("id", clientId).single(),
+    admin.from("client_contacts").select("email").eq("client_id", clientId),
+  ]);
+  const emails = [(cRes.data as { email?: string } | null)?.email ?? "", ...((ctRes.data ?? []).map((c) => c.email ?? ""))];
+  return [...new Set(emails.map((e) => e.trim()).filter(Boolean))];
+}
+
 export async function getContactInfo(contactId: string): Promise<{ clientId: string; email: string; name: string } | null> {
   const { data } = await admin.from("client_contacts").select("client_id, email, name").eq("id", contactId).single();
   if (!data) return null;
