@@ -86,6 +86,18 @@ alter table public.tickets add column if not exists deliverable_url text;
 create index if not exists tickets_client_idx on public.tickets(client_id);
 create index if not exists tickets_status_idx on public.tickets(status);
 
+-- Client-attached files/photos on a request (shown to the designer on the ticket).
+create table if not exists public.ticket_attachments (
+  id         uuid primary key default gen_random_uuid(),
+  ticket_id  uuid not null references public.tickets(id) on delete cascade,
+  url        text not null,
+  name       text,
+  kind       text not null default 'image',
+  created_at timestamptz not null default now()
+);
+create index if not exists ticket_attachments_ticket_idx on public.ticket_attachments(ticket_id);
+alter table public.ticket_attachments enable row level security;
+
 -- Design versions on a ticket. Each change request adds a new link; the accepted
 -- one (else the latest) is what the client sees as the main design.
 create table if not exists public.ticket_versions (

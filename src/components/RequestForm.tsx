@@ -34,6 +34,8 @@ export default function RequestForm({ clientId, portalToken }: { clientId: strin
         <input name="deadline" type="date" style={{ ...inp, flex: 1, minWidth: 150 }} />
       </div>
       <input name="references" placeholder="Reference links (optional)" style={{ ...inp, marginTop: 8 }} />
+      <label style={{ display: "block", fontSize: 11.5, color: MUTE, margin: "10px 0 5px" }}>Attach photos / files (optional)</label>
+      <input name="attachments" type="file" accept="image/*,.pdf" multiple style={{ ...inp, padding: 8, fontSize: 12 }} />
       <button type="submit" style={{ marginTop: 14, background: ACCENT, color: INK, border: "none", borderRadius: 8,
         padding: "11px 22px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
         Submit request

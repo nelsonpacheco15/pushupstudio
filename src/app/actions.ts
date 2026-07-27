@@ -7,7 +7,7 @@ import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEm
   createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions,
   notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
   getSettings, saveSettings, planAmountFromSettings,
-  insertBrandAsset, deleteBrandAsset, type NotificationRecord } from "@/lib/data";
+  insertBrandAsset, deleteBrandAsset, insertTicketAttachment, type NotificationRecord } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
 import { issueMonthlyInvoice } from "@/lib/invoicing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
@@ -547,6 +547,21 @@ export async function createTicket(formData: FormData): Promise<void> {
     priority,
   }).select("id").single();
   if (error) throw new Error(error.message);
+
+  // Client-attached photos/files → uploaded to storage + shown to the designer.
+  if (created?.id) {
+    const files = formData.getAll("attachments").filter((f): f is File => f instanceof File && f.size > 0);
+    for (const file of files.slice(0, 10)) {
+      if (file.size > 15 * 1024 * 1024) continue; // 15MB cap each
+      const safe = (file.name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `request-attachments/${clientId}/${created.id}/${Date.now()}-${safe}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, { contentType: file.type || "application/octet-stream", upsert: true });
+      if (upErr) continue;
+      const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      await insertTicketAttachment(created.id, url, file.name || safe, file.type.startsWith("image/") ? "image" : "file");
+    }
+  }
 
   // Notify on client-submitted requests.
   if (createdBy === "client" && client) {

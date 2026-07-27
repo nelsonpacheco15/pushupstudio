@@ -549,6 +549,20 @@ export async function getTicketFeedback(ticketId: string): Promise<TicketFeedbac
   }));
 }
 
+/* --------------------------------------------------------- Attachments */
+
+export interface TicketAttachment { id: string; url: string; name: string; kind: string; createdAt: string; }
+
+export async function listTicketAttachments(ticketId: string): Promise<TicketAttachment[]> {
+  const { data } = await admin.from("ticket_attachments").select("id, url, name, kind, created_at")
+    .eq("ticket_id", ticketId).order("created_at", { ascending: true });
+  return (data ?? []).map((a) => ({ id: a.id, url: a.url, name: a.name ?? "", kind: a.kind, createdAt: a.created_at }));
+}
+
+export async function insertTicketAttachment(ticketId: string, url: string, name: string, kind: string): Promise<void> {
+  await admin.from("ticket_attachments").insert({ ticket_id: ticketId, url, name, kind });
+}
+
 /* --------------------------------------------------------- Design versions */
 
 export interface TicketVersion {

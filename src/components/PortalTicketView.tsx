@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { STATUSES, driveEmbed, type Ticket } from "@/lib/tickets";
-import type { ClientRecord, TicketFeedback, TicketVersion } from "@/lib/data";
+import type { ClientRecord, TicketFeedback, TicketVersion, TicketAttachment } from "@/lib/data";
 import TicketEvaluation from "@/components/TicketEvaluation";
 import { DS } from "@/lib/theme";
 
@@ -18,10 +18,10 @@ const T = {
 };
 
 export default function PortalTicketView({
-  client, ticket, feedback, backHref, backLabel, versions = [], shown, slaHours = 0,
+  client, ticket, feedback, backHref, backLabel, versions = [], shown, slaHours = 0, attachments = [],
 }: {
   client: ClientRecord; ticket: Ticket; feedback: TicketFeedback[]; backHref: string; backLabel: string;
-  versions?: TicketVersion[]; shown?: TicketVersion | null; slaHours?: number;
+  versions?: TicketVersion[]; shown?: TicketVersion | null; slaHours?: number; attachments?: TicketAttachment[];
 }) {
   const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
   const accepted = shown?.status === "accepted";
@@ -80,6 +80,25 @@ export default function PortalTicketView({
           <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginBottom: 18 }}>
             <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 10 }}>[ {t.brief} ]</div>
             <div style={{ fontSize: 13.5, color: "#CFCCC2", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ticket.description}</div>
+          </div>
+        )}
+
+        {attachments.length > 0 && (
+          <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginBottom: 18 }}>
+            <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 12 }}>
+              [ {client.language === "pt" ? "ANEXOS" : "ATTACHMENTS"} · {attachments.length} ]
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
+              {attachments.map((a) => (
+                <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
+                  style={{ display: "block", border: `1px solid ${DS.border}`, borderRadius: 4, overflow: "hidden", background: DS.bg }}>
+                  {a.kind === "image"
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={a.url} alt={a.name} style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                    : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: DS.mute }}>⤓</div>}
+                </a>
+              ))}
+            </div>
           </div>
         )}
 
