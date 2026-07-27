@@ -79,6 +79,28 @@ const footer: Record<Lang, string> = { en: "[ SENT BY PushUP STUDIO ]", pt: "[ E
 
 /* ============================ client-facing ============================ */
 
+/** Invite email with dashboard link + login credentials (client account or seat). */
+export async function emailLoginInvite(opts: { email: string; name: string; clientName: string; password: string; language: Lang }): Promise<void> {
+  if (!opts.email) return;
+  const L = opts.language;
+  const loginUrl = `${APP_URL}/enter`;
+  const t = L === "pt"
+    ? { subject: `Acesso ao Locker Room de ${opts.clientName}`, h: "O teu acesso está pronto",
+        p: `Olá${opts.name ? ` ${opts.name}` : ""}, foste adicionado ao espaço de ${bold(opts.clientName)} na PushUP. Entra com os dados abaixo para veres o projeto e criares pedidos.`,
+        email: "Email", pass: "Palavra-passe", cta: "Entrar no Locker Room",
+        note: "Podes mudar a palavra-passe connosco quando quiseres." }
+    : { subject: `Your access to ${opts.clientName}'s Locker Room`, h: "Your access is ready",
+        p: `Hi${opts.name ? ` ${opts.name}` : ""}, you've been added to ${bold(opts.clientName)}'s space on PushUP. Log in with the details below to see the project and create requests.`,
+        email: "Email", pass: "Password", cta: "Open your Locker Room",
+        note: "Ask us anytime if you'd like your password changed." };
+  const creds = `<div style="background:${BG};border:1px solid ${LINE};border-radius:4px;padding:16px 18px;margin:6px 0 14px;">
+    <div style="font-family:${MONO};font-size:12.5px;color:${TXT};margin:4px 0;">${t.email}: <span style="color:${MUT};">${opts.email}</span></div>
+    <div style="font-family:${MONO};font-size:12.5px;color:${TXT};margin:4px 0;">${t.pass}: <span style="color:${MUT};">${opts.password}</span></div>
+  </div>`;
+  await send(opts.email, t.subject,
+    shell(heading(t.h) + para(t.p) + creds + button(t.cta, loginUrl) + para(`<span style="font-size:13px;color:${MUT};">${t.note}</span>`), footer[L]));
+}
+
 export async function emailClientWelcome(c: ClientLite): Promise<void> {
   const L = c.language;
   const t = {

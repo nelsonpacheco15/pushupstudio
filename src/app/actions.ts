@@ -200,6 +200,10 @@ export async function createClient(formData: FormData): Promise<void> {
   for (const e of contactEmails) {
     await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token, language });
   }
+  // If a Locker Room password was set, email the primary contact their login.
+  if (password && data.email) {
+    await mail.emailLoginInvite({ email: data.email, name: data.name, clientName: data.name, password, language });
+  }
   await mail.emailStudioNewClient(data.name, company, language);
   await notify({ audience: "studio", clientId: data.id, type: "client_added",
     title: `New athlete: ${data.name}`, body: company || "", link: `/client/${data.id}` });
@@ -257,6 +261,11 @@ export async function updateClient(formData: FormData): Promise<void> {
   }
   const { error } = await admin.from("clients").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+
+  // If a password was (re)set, email the primary contact their login.
+  if (password && email) {
+    await mail.emailLoginInvite({ email, name: name || "", clientName: name || email, password, language });
+  }
 
   const contactEmails = contactsRaw.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
   if (contactEmails.length) {
@@ -431,15 +440,25 @@ export async function addClientContact(clientId: string, formData: FormData): Pr
   const row: Record<string, unknown> = { client_id: clientId, email, name: name || null };
   if (password) row.password_hash = await hashPassword(password);
   await admin.from("client_contacts").insert(row);
+  // Email the new seat their dashboard link + login when a password was set.
+  if (password) {
+    const client = await getClientById(clientId);
+    if (client) await mail.emailLoginInvite({ email, name, clientName: client.name, password, language: client.language });
+  }
   revalidatePath(`/client/${clientId}/manage`);
 }
 
-/** Set / reset a contact seat's Locker Room password. */
+/** Set / reset a contact seat's Locker Room password + email them the new login. */
 export async function setContactPassword(contactId: string, clientId: string, formData: FormData): Promise<void> {
   await requireStudio();
   const password = String(formData.get("password") || "");
   if (!password) return;
   await admin.from("client_contacts").update({ password_hash: await hashPassword(password) }).eq("id", contactId);
+  const { data: ct } = await admin.from("client_contacts").select("email, name").eq("id", contactId).single();
+  const client = await getClientById(clientId);
+  if (ct?.email && client) {
+    await mail.emailLoginInvite({ email: ct.email, name: ct.name || "", clientName: client.name, password, language: client.language });
+  }
   revalidatePath(`/client/${clientId}/manage`);
 }
 
