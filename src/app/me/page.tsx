@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getClientSession } from "@/lib/clientAuth";
-import { getClientById, listTickets, listInvoicesForClient } from "@/lib/data";
+import { getClientById, listTickets, listInvoicesForClient, listClientNotifications } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
 import { stripeEnabled } from "@/lib/stripe";
 import PortalBoard, { type BillingStrip } from "@/components/PortalBoard";
@@ -13,7 +13,10 @@ export default async function LockerRoomPage() {
   if (!clientId) redirect("/enter");
   const client = await getClientById(clientId);
   if (!client) redirect("/enter");
-  const [tickets, invoices] = await Promise.all([listTickets(client.id), listInvoicesForClient(client.id)]);
+  const [tickets, invoices, notifItems] = await Promise.all([
+    listTickets(client.id), listInvoicesForClient(client.id), listClientNotifications(client.id),
+  ]);
+  const notifications = { items: notifItems, unread: notifItems.filter((n) => !n.readAt).length };
 
   const plan = planFor(client.plan);
   const latest = invoices[0];
@@ -26,5 +29,5 @@ export default async function LockerRoomPage() {
     canPay: client.paymentMethod === "stripe" && stripeEnabled() && (!latest || latest.status === "sent"),
   };
 
-  return <PortalBoard client={client} tickets={tickets} ticketHrefBase="/me" showLogout billing={billing} />;
+  return <PortalBoard client={client} tickets={tickets} ticketHrefBase="/me" showLogout billing={billing} notifications={notifications} />;
 }

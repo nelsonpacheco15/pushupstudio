@@ -98,6 +98,22 @@ create table if not exists public.ticket_versions (
 create index if not exists ticket_versions_ticket_idx on public.ticket_versions(ticket_id);
 alter table public.ticket_versions enable row level security;
 
+-- in-app notifications (studio inbox + per-client Locker Room inbox)
+create table if not exists public.notifications (
+  id         uuid primary key default gen_random_uuid(),
+  audience   text not null default 'studio' check (audience in ('studio','client')),
+  client_id  uuid references public.clients(id) on delete cascade,
+  type       text not null default 'info',
+  title      text not null,
+  body       text default '',
+  link       text,
+  read_at    timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists notifications_audience_idx on public.notifications(audience, created_at desc);
+create index if not exists notifications_client_idx on public.notifications(client_id, created_at desc);
+alter table public.notifications enable row level security;
+
 -- Client evaluation of a delivered design, on a ticket.
 create table if not exists public.ticket_feedback (
   id         uuid primary key default gen_random_uuid(),

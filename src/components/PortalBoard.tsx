@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { clientLogout, startClientCheckout } from "@/app/actions";
+import { clientLogout, startClientCheckout, type NotifFeed } from "@/app/actions";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus, type Ticket } from "@/lib/tickets";
 import type { ClientRecord } from "@/lib/data";
 import RequestPanel from "@/components/RequestPanel";
+import NotificationBell from "@/components/NotificationBell";
 import { INK, PANEL, LINE, MUTE, PAPER } from "@/lib/theme";
 
 export interface BillingStrip {
@@ -14,9 +15,10 @@ export interface BillingStrip {
    prefix for a ticket link, e.g. `/portal/<token>` or `/me`. */
 
 export default function PortalBoard({
-  client, tickets, ticketHrefBase, showLogout = false, billing,
+  client, tickets, ticketHrefBase, showLogout = false, billing, notifications,
 }: {
-  client: ClientRecord; tickets: Ticket[]; ticketHrefBase: string; showLogout?: boolean; billing?: BillingStrip;
+  client: ClientRecord; tickets: Ticket[]; ticketHrefBase: string; showLogout?: boolean;
+  billing?: BillingStrip; notifications?: NotifFeed;
 }) {
   const open = tickets.filter((t) => t.status !== "done").length;
 
@@ -34,14 +36,17 @@ export default function PortalBoard({
             fontFamily: client.brandFont ? `'${client.brandFont}', 'Bricolage Grotesque'` : "'Bricolage Grotesque'" }}>{client.name}</div>
           <div style={{ fontSize: 12.5, color: MUTE }}>Your reps and how they’re progressing · {open} open</div>
         </div>
-        {showLogout && (
-          <form action={clientLogout} style={{ marginLeft: "auto" }}>
-            <button type="submit" style={{ background: "transparent", color: MUTE, border: `1px solid ${LINE}`,
-              borderRadius: 8, padding: "8px 14px", fontSize: 12.5, cursor: "pointer", fontFamily: "'IBM Plex Mono'" }}>
-              Log out
-            </button>
-          </form>
-        )}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          {notifications && <NotificationBell scope="client" initial={notifications} tone="light" />}
+          {showLogout && (
+            <form action={clientLogout}>
+              <button type="submit" style={{ background: "transparent", color: MUTE, border: `1px solid ${LINE}`,
+                borderRadius: 8, padding: "8px 14px", fontSize: 12.5, cursor: "pointer", fontFamily: "'IBM Plex Mono'" }}>
+                Log out
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {billing && (

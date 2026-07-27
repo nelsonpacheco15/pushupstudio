@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { logout } from "@/app/actions";
 import { authDisabled } from "@/lib/auth";
+import { listStudioNotifications } from "@/lib/data";
+import NotificationBell from "@/components/NotificationBell";
 import { DS } from "@/lib/theme";
 
 const ITEMS = [
@@ -9,17 +11,22 @@ const ITEMS = [
   { key: "billing", label: "Billing", href: "/billing", icon: "€" },
 ];
 
-export default function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" }) {
+export default async function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" }) {
+  const items = await listStudioNotifications();
+  const feed = { items, unread: items.filter((n) => !n.readAt).length };
   return (
     <aside style={{ width: 232, flex: "0 0 232px", background: DS.bg2, borderRight: `1px solid ${DS.border}`,
       minHeight: "100vh", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0 }}>
-      <div style={{ padding: "2px 10px 8px" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="https://jsyxwuwmzgwlpstdcpkm.supabase.co/storage/v1/object/public/stylescape-images/brand/logo-white.png"
-          alt="PushUP Studio" style={{ height: 17, display: "block" }} />
-        <div style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 1, color: DS.faint, marginTop: 8 }}>
-          [ STUDIO&nbsp;OS ]
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 6px 8px 10px" }}>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="https://jsyxwuwmzgwlpstdcpkm.supabase.co/storage/v1/object/public/stylescape-images/brand/logo-white.png"
+            alt="PushUP Studio" style={{ height: 17, display: "block" }} />
+          <div style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 1, color: DS.faint, marginTop: 8 }}>
+            [ STUDIO&nbsp;OS ]
+          </div>
         </div>
+        <NotificationBell scope="studio" initial={feed} />
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 22 }}>

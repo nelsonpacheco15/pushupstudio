@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
-  createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions } from "@/lib/data";
-import { planFor } from "@/lib/billing";
+  createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions,
+  notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
+  type NotificationRecord } from "@/lib/data";
+import { planFor, formatEUR } from "@/lib/billing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
-import { requireStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
+import { requireStudio, isStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
 import { hashPassword, signClient, CLIENT_COOKIE, getClientSession } from "@/lib/clientAuth";
 import { getStripe, stripeEnabled, priceForPlan } from "@/lib/stripe";
 import * as mail from "@/lib/email";
@@ -91,6 +93,35 @@ export async function clientLogout(): Promise<void> {
   redirect("/enter");
 }
 
+/* -------------------------------------------------------------- Notifications */
+
+export interface NotifFeed { items: NotificationRecord[]; unread: number; }
+
+/** Studio inbox: recent notifications + unread count (polled by the bell). */
+export async function fetchStudioNotifications(): Promise<NotifFeed> {
+  if (!(await isStudio())) return { items: [], unread: 0 };
+  const items = await listStudioNotifications();
+  return { items, unread: items.filter((n) => !n.readAt).length };
+}
+
+export async function readStudioNotifications(): Promise<void> {
+  await requireStudio();
+  await markStudioNotificationsRead();
+}
+
+/** Client inbox: the logged-in client's notifications + unread count. */
+export async function fetchClientNotifications(): Promise<NotifFeed> {
+  const clientId = await getClientSession();
+  if (!clientId) return { items: [], unread: 0 };
+  const items = await listClientNotifications(clientId);
+  return { items, unread: items.filter((n) => !n.readAt).length };
+}
+
+export async function readClientNotifications(): Promise<void> {
+  const clientId = await getClientSession();
+  if (clientId) await markClientNotificationsRead(clientId);
+}
+
 /* ----------------------------------------------------------------- Clients */
 
 export async function createClient(formData: FormData): Promise<void> {
@@ -139,6 +170,8 @@ export async function createClient(formData: FormData): Promise<void> {
     await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token, language });
   }
   await mail.emailStudioNewClient(data.name, company, language);
+  await notify({ audience: "studio", clientId: data.id, type: "client_added",
+    title: `New athlete: ${data.name}`, body: company || "", link: `/client/${data.id}` });
 
   // First invoice for the plan → recorded in the system + emailed to client and studio.
   const p = planFor(plan);
@@ -149,6 +182,8 @@ export async function createClient(formData: FormData): Promise<void> {
   if (invoice) {
     await mail.emailInvoiceIssued({ ...invoice, clientName: data.name },
       { name: data.name, email: data.email ?? "", language, portalToken: data.portal_token });
+    await notify({ audience: "client", clientId: data.id, type: "invoice",
+      title: `Invoice ${invoice.number}`, body: `${p.label} — ${formatEUR(p.amountCents)}`, link: "/me" });
   }
 
   revalidatePath("/");
@@ -362,7 +397,7 @@ export async function createTicket(formData: FormData): Promise<void> {
   }
 
   const priority = Math.max(0, Math.min(2, Number(formData.get("priority")) || 0));
-  const { error } = await admin.from("tickets").insert({
+  const { data: created, error } = await admin.from("tickets").insert({
     client_id: clientId,
     title,
     description,
@@ -370,7 +405,7 @@ export async function createTicket(formData: FormData): Promise<void> {
     status: "backlog",
     created_by: createdBy,
     priority,
-  });
+  }).select("id").single();
   if (error) throw new Error(error.message);
 
   // Notify on client-submitted requests.
@@ -380,6 +415,8 @@ export async function createTicket(formData: FormData): Promise<void> {
       title
     );
     await mail.emailStudioNewRequest(client.name, title);
+    await notify({ audience: "studio", clientId, type: "new_request",
+      title: `New request from ${client.name}`, body: title, link: created ? `/ticket/${created.id}` : `/client/${clientId}` });
   }
 
   revalidatePath(`/client/${clientId}`);
@@ -430,6 +467,10 @@ export async function moveTicket(ticketId: string, clientId: string, status: str
       if (status === "in_progress") await mail.emailInProgress(lite, title);
       else if (status === "review") await mail.emailReadyForReview(lite, title);
       else if (status === "done") await mail.emailDone(lite, title);
+
+      if (status === "in_progress") await notify({ audience: "client", clientId, type: "in_progress", title: "We're on it 💪", body: title, link: `/me/${ticketId}` });
+      else if (status === "review") await notify({ audience: "client", clientId, type: "review", title: "Ready for your review", body: title, link: `/me/${ticketId}` });
+      else if (status === "done") await notify({ audience: "client", clientId, type: "done", title: "Completed ✓", body: title, link: `/me/${ticketId}` });
     }
   }
 
@@ -496,8 +537,12 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
           .eq("ticket_id", ticketId).eq("decision", "changes").order("created_at", { ascending: false }).limit(1);
         const changeNote = (fb?.[0] as { note?: string } | undefined)?.note || "";
         await mail.emailNewVersion(lite, title, n, changeNote);
+        await notify({ audience: "client", clientId: client.id, type: "new_version",
+          title: `New version ready (v${n})`, body: title, link: `/me/${ticketId}` });
       } else {
         await mail.emailReadyForReview(lite, title);
+        await notify({ audience: "client", clientId: client.id, type: "review",
+          title: "Your design is ready to review", body: title, link: `/me/${ticketId}` });
       }
     }
     revalidatePath(`/client/${row.client_id}`);
@@ -534,6 +579,9 @@ export async function submitTicketFeedback(
   }
 
   await mail.emailStudioNewRequest(client.name, `Feedback on "${ticket.title}" — ${decision === "approved" ? "APPROVED ✓" : "changes requested"}`);
+  await notify({ audience: "studio", clientId: client.id, type: decision === "approved" ? "approved" : "changes",
+    title: decision === "approved" ? `${client.name} approved a design ✓` : `${client.name} requested changes ↻`,
+    body: `${ticket.title}${note ? ` — “${note}”` : ""}`, link: `/ticket/${ticketId}` });
 
   revalidatePath(`/portal/${token}/${ticketId}`);
   revalidatePath(`/portal/${token}`);

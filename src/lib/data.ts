@@ -281,6 +281,58 @@ export async function setInvoiceStatus(id: string, status: string): Promise<void
   await admin.from("invoices").update(patch).eq("id", id);
 }
 
+/* ------------------------------------------------------------- Notifications */
+
+export interface NotificationRecord {
+  id: string; type: string; title: string; body: string; link: string | null;
+  readAt: string | null; createdAt: string; clientId: string | null;
+}
+
+interface NotificationInput {
+  audience: "studio" | "client"; clientId?: string | null;
+  type: string; title: string; body?: string; link?: string | null;
+}
+
+/** Create an in-app notification. Best-effort — never throws into the caller. */
+export async function notify(input: NotificationInput): Promise<void> {
+  try {
+    await admin.from("notifications").insert({
+      audience: input.audience, client_id: input.clientId ?? null,
+      type: input.type, title: input.title, body: input.body ?? "", link: input.link ?? null,
+    });
+  } catch (e) { console.warn("[notify] failed:", (e as Error).message); }
+}
+
+function mapNotification(r: Record<string, unknown>): NotificationRecord {
+  return {
+    id: r.id as string, type: r.type as string, title: r.title as string, body: (r.body as string) ?? "",
+    link: (r.link as string) ?? null, readAt: (r.read_at as string) ?? null,
+    createdAt: r.created_at as string, clientId: (r.client_id as string) ?? null,
+  };
+}
+
+export async function listStudioNotifications(limit = 25): Promise<NotificationRecord[]> {
+  const { data } = await admin.from("notifications").select("*").eq("audience", "studio")
+    .order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []).map(mapNotification);
+}
+
+export async function listClientNotifications(clientId: string, limit = 25): Promise<NotificationRecord[]> {
+  const { data } = await admin.from("notifications").select("*").eq("audience", "client").eq("client_id", clientId)
+    .order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []).map(mapNotification);
+}
+
+export async function markStudioNotificationsRead(): Promise<void> {
+  await admin.from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("audience", "studio").is("read_at", null);
+}
+
+export async function markClientNotificationsRead(clientId: string): Promise<void> {
+  await admin.from("notifications").update({ read_at: new Date().toISOString() })
+    .eq("audience", "client").eq("client_id", clientId).is("read_at", null);
+}
+
 /* ------------------------------------------------------------------ Tickets */
 
 function emptyCounts(): Record<TicketStatus, number> {
