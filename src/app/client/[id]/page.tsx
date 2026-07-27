@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getClientById, listTickets, getRunningTimer } from "@/lib/data";
 import KanbanBoard from "@/components/KanbanBoard";
 import ClientBoardHeader from "@/components/ClientBoardHeader";
+import StudioNav from "@/components/StudioNav";
 import { Scanlines } from "@/components/crt";
 import { DS } from "@/lib/theme";
 
@@ -21,16 +22,19 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const running = await getRunningTimer();
 
   return (
-    <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text }}>
+    <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text, display: "flex" }}>
       <Scanlines />
-      <ClientBoardHeader client={client} />
-      <div style={{ padding: "26px 40px" }}>
-        <KanbanBoard
-          clientId={client.id}
-          portalToken={client.portalToken}
-          tickets={tickets}
-          runningTicketId={running?.ticketId ?? null}
-        />
+      <StudioNav active="overview" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ClientBoardHeader client={client} />
+        <div style={{ padding: "24px 32px" }}>
+          <KanbanBoard
+            clientId={client.id}
+            portalToken={client.portalToken}
+            tickets={tickets}
+            runningTicketId={running?.ticketId ?? null}
+          />
+        </div>
       </div>
     </div>
   );
