@@ -161,12 +161,13 @@ export interface ClientSummary extends ClientRecord {
 }
 
 export async function listClients(): Promise<ClientSummary[]> {
-  const { data: rows } = await admin
+  const { data: allRows } = await admin
     .from("clients")
     .select("*")
-    .is("archived_at", null)
     .order("created_at", { ascending: false });
-  if (!rows) return [];
+  // Filter archived in JS so this never breaks if the archived_at column isn't there yet.
+  const rows = (allRows ?? []).filter((r) => !(r as { archived_at?: string | null }).archived_at);
+  if (!rows.length) return [];
 
   const { data: tk } = await admin.from("tickets").select("id, client_id, status, updated_at, created_at");
   const ticketClient = new Map<string, string>();
@@ -340,19 +341,21 @@ export interface SearchItem { type: "client" | "rep"; id: string; label: string;
 /** Lightweight index of clients + reps for the ⌘P command palette. */
 export interface ArchivedClient { id: string; name: string; company: string; plan: string; archivedAt: string; }
 export async function getArchivedClients(): Promise<ArchivedClient[]> {
-  const { data } = await admin.from("clients").select("id, name, company, plan, archived_at")
-    .not("archived_at", "is", null).order("archived_at", { ascending: false });
-  return (data ?? []).map((c) => ({ id: c.id, name: c.name, company: c.company ?? "", plan: c.plan ?? "growth", archivedAt: c.archived_at }));
+  const { data } = await admin.from("clients").select("*");
+  return (data ?? []).filter((c) => (c as { archived_at?: string | null }).archived_at)
+    .map((c) => ({ id: c.id, name: c.name, company: c.company ?? "", plan: c.plan ?? "growth", archivedAt: c.archived_at }))
+    .sort((a, b) => (a.archivedAt < b.archivedAt ? 1 : -1));
 }
 
 export async function getSearchIndex(): Promise<SearchItem[]> {
   const [cRes, tRes] = await Promise.all([
-    admin.from("clients").select("id, name, company").is("archived_at", null),
+    admin.from("clients").select("*"),
     admin.from("tickets").select("id, title, status, client_id"),
   ]);
+  const activeClients = (cRes.data ?? []).filter((c) => !(c as { archived_at?: string | null }).archived_at);
   const names = new Map((cRes.data ?? []).map((c) => [c.id as string, c.name as string]));
   const items: SearchItem[] = [];
-  for (const c of cRes.data ?? []) items.push({ type: "client", id: c.id, label: c.name, sub: c.company || "Athlete", href: `/client/${c.id}` });
+  for (const c of activeClients) items.push({ type: "client", id: c.id, label: c.name, sub: c.company || "Athlete", href: `/client/${c.id}` });
   for (const t of tRes.data ?? []) items.push({ type: "rep", id: t.id, label: t.title || "Untitled", sub: `${names.get(t.client_id) ?? ""} · ${t.status}`, href: `/ticket/${t.id}` });
   return items;
 }
@@ -438,8 +441,8 @@ export interface BillingClient {
   plan: string; paymentMethod: string; status: string; createdAt: string | null;
 }
 export async function listClientsForBilling(): Promise<BillingClient[]> {
-  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, status, created_at").is("archived_at", null);
-  return (data ?? []).map((c) => ({
+  const { data } = await admin.from("clients").select("*");
+  return (data ?? []).filter((c) => !(c as { archived_at?: string | null }).archived_at).map((c) => ({
     id: c.id as string, name: c.name as string, email: (c.email as string) ?? "",
     language: (c.language === "pt" ? "pt" : "en") as Lang, portalToken: c.portal_token as string,
     plan: (c.plan as string) || "growth", paymentMethod: (c.payment_method as string) || "bank_transfer",
