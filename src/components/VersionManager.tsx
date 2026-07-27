@@ -12,11 +12,13 @@ const STATUS: Record<string, { label: string; color: string }> = {
   pending: { label: "PENDING", color: DS.mute },
 };
 
-export default function VersionManager({ ticketId, versions }: { ticketId: string; versions: TicketVersion[] }) {
+export default function VersionManager({ ticketId, versions, changeNote }: { ticketId: string; versions: TicketVersion[]; changeNote?: string }) {
   const [value, setValue] = useState("");
   const [pending, start] = useTransition();
   const router = useRouter();
   const hasAccepted = versions.some((v) => v.status === "accepted");
+  const last = versions[versions.length - 1];
+  const awaitingRevision = last?.status === "changes";
 
   function add() {
     if (!value.trim()) return;
@@ -48,9 +50,18 @@ export default function VersionManager({ ticketId, versions }: { ticketId: strin
         </div>
       )}
 
+      {awaitingRevision && (
+        <div style={{ background: DS.card2, border: `1px solid ${DS.amber}`, borderRadius: DS.radius, padding: "10px 14px", marginBottom: 10 }}>
+          <div style={{ fontFamily: DS.mono, fontSize: 10.5, letterSpacing: 0.5, color: DS.amber, marginBottom: changeNote ? 6 : 0 }}>
+            ↻ CLIENT REQUESTED CHANGES ON v{last.version} — PASTE THE REVISED VERSION BELOW
+          </div>
+          {changeNote && <div style={{ fontSize: 13, color: "#cfcabb", lineHeight: 1.5 }}>“{changeNote}”</div>}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={value} onChange={(e) => setValue(e.target.value)}
-          placeholder={versions.length === 0 ? "Paste Google Drive link (file or folder)" : "Paste new version link after a change request"}
+          placeholder={versions.length === 0 ? "Paste Google Drive link (file or folder)" : "Paste revised version link"}
           style={{ ...dsInput, flex: 1, minWidth: 220 }} />
         <button onClick={add} disabled={pending} style={{ ...dsBtn, opacity: pending ? 0.6 : 1 }}>
           {pending ? "Adding…" : versions.length === 0 ? "Attach design" : `Add v${(versions[versions.length - 1]?.version ?? 0) + 1}`}

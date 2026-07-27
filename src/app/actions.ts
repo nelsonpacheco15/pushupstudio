@@ -465,15 +465,22 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
   const { data: t } = await admin.from("tickets").select("client_id, status, title").eq("id", ticketId).single();
   await admin.from("tickets").update({ deliverable_url: clean, status: "review", updated_at: new Date().toISOString() }).eq("id", ticketId);
 
-  // Notify the client a (new) design is ready to review.
   const row = t as { client_id: string; status: string; title: string } | null;
   if (row) {
     const client = await getClientById(row.client_id);
     if (client) {
-      await mail.emailReadyForReview(
-        { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language },
-        row.title || "your request",
-      );
+      const lite = { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language };
+      const title = row.title || "your request";
+      const n = version?.version ?? 1;
+      if (n > 1) {
+        // Revision after a change request: email the client the new version + echo their last request.
+        const { data: fb } = await admin.from("ticket_feedback").select("note")
+          .eq("ticket_id", ticketId).eq("decision", "changes").order("created_at", { ascending: false }).limit(1);
+        const changeNote = (fb?.[0] as { note?: string } | undefined)?.note || "";
+        await mail.emailNewVersion(lite, title, n, changeNote);
+      } else {
+        await mail.emailReadyForReview(lite, title);
+      }
     }
     revalidatePath(`/client/${row.client_id}`);
   }

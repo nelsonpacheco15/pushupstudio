@@ -122,7 +122,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE, marginBottom: 12 }}>
             DESIGN VERSIONS · GOOGLE DRIVE{shown ? ` · showing v${shown.version}` : ""}
           </div>
-          <VersionManager ticketId={id} versions={versions} />
+          <VersionManager ticketId={id} versions={versions}
+            changeNote={feedback.find((f) => f.decision === "changes")?.note || undefined} />
           {embed && (
             <iframe src={embed} title="Design preview"
               style={{ width: "100%", height: 420, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 14, background: "#000" }} />

@@ -133,6 +133,23 @@ export async function emailReadyForReview(c: ClientLite, ticketTitle: string): P
   await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[c.language]));
 }
 
+/** Sent when the studio uploads a revised design (v2+) after a change request. */
+export async function emailNewVersion(c: ClientLite, ticketTitle: string, version: number, changeNote?: string): Promise<void> {
+  const L = c.language;
+  const t = {
+    en: { subject: `New version ready: "${ticketTitle}" (v${version})`, h: "New version ready",
+      p: `We've applied the changes you asked for, ${c.name}. Version ${bold(`v${version}`)} of ${bold(ticketTitle)} is ready to review.`,
+      yourReq: "Your request", cta: "Review the new version" },
+    pt: { subject: `Nova versão pronta: "${ticketTitle}" (v${version})`, h: "Nova versão pronta",
+      p: `Aplicámos as alterações que pediste, ${c.name}. A versão ${bold(`v${version}`)} de ${bold(ticketTitle)} está pronta para reveres.`,
+      yourReq: "O teu pedido", cta: "Rever a nova versão" },
+  }[L];
+  const noteBlock = changeNote
+    ? para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${t.yourReq} ]</span><br/><span style="border-left:2px solid ${LINE};padding-left:12px;display:inline-block;color:#CFCCC2;">${changeNote}</span>`)
+    : "";
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + noteBlock + button(t.cta, portalUrl(c.portalToken)), footer[L]));
+}
+
 export async function emailDone(c: ClientLite, ticketTitle: string): Promise<void> {
   const L = c.language;
   const t = {
