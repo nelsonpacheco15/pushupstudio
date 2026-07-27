@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { clientLogout } from "@/app/actions";
+import { clientLogout, startClientCheckout } from "@/app/actions";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus, type Ticket } from "@/lib/tickets";
 import type { ClientRecord } from "@/lib/data";
 import RequestPanel from "@/components/RequestPanel";
 import { INK, PANEL, LINE, MUTE, PAPER } from "@/lib/theme";
+
+export interface BillingStrip {
+  planLabel: string; amountLabel: string; method: string; status: string; canPay: boolean;
+}
 
 /* The client "Locker Room" board. Shared by the public share-link portal
    (/portal/[token]) and the logged-in account view (/me). ticketHrefBase is the
    prefix for a ticket link, e.g. `/portal/<token>` or `/me`. */
 
 export default function PortalBoard({
-  client, tickets, ticketHrefBase, showLogout = false,
+  client, tickets, ticketHrefBase, showLogout = false, billing,
 }: {
-  client: ClientRecord; tickets: Ticket[]; ticketHrefBase: string; showLogout?: boolean;
+  client: ClientRecord; tickets: Ticket[]; ticketHrefBase: string; showLogout?: boolean; billing?: BillingStrip;
 }) {
   const open = tickets.filter((t) => t.status !== "done").length;
 
@@ -39,6 +43,26 @@ export default function PortalBoard({
           </form>
         )}
       </div>
+
+      {billing && (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 26px", borderBottom: `1px solid ${LINE}`,
+          background: PANEL, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: 1, color: MUTE }}>[ PLAN ]</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>{billing.planLabel}</span>
+          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 13, color: PAPER }}>{billing.amountLabel}/mo</span>
+          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: billing.status === "paid" ? "#7FB77E" : MUTE }}>
+            · {billing.status === "paid" ? "PAID" : billing.status === "sent" ? "PAYMENT DUE" : billing.status.toUpperCase()}
+          </span>
+          {billing.canPay && (
+            <form action={startClientCheckout} style={{ marginLeft: "auto" }}>
+              <button type="submit" style={{ background: PAPER, color: INK, border: "none", borderRadius: 8,
+                padding: "8px 16px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "'IBM Plex Mono'" }}>
+                Pay by card
+              </button>
+            </form>
+          )}
+        </div>
+      )}
 
       <div style={{ padding: 26, maxWidth: 1200, margin: "0 auto", display: "grid", gap: 26,
         gridTemplateColumns: "minmax(0, 1fr) 360px" }}>

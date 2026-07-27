@@ -130,6 +130,12 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
             <input name="password" type="text" placeholder="Set a password" autoComplete="off" style={dsInput} />
           </div>
         </div>
+        <label style={{ ...lbl, marginTop: 12 }}>Payment method</label>
+        <select name="method" defaultValue="bank_transfer" style={dsInput}>
+          <option value="bank_transfer">Bank transfer</option>
+          <option value="stripe">Card (Stripe)</option>
+        </select>
+        <div style={{ fontSize: 11, color: DS.mute, marginTop: 6 }}>An invoice is created &amp; emailed to the client and to you when you add them.</div>
         <label style={{ ...lbl, marginTop: 12 }}>Invite people (one email per line)</label>
         <textarea name="contacts" placeholder="teammate@company.com&#10;another@company.com" style={dsTextarea} rows={2} />
         <label style={{ ...lbl, marginTop: 12 }}>Logo</label>

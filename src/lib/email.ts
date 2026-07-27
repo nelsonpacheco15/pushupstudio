@@ -1,5 +1,6 @@
 import "server-only";
-import type { Lang } from "@/lib/data";
+import type { Lang, Invoice } from "@/lib/data";
+import { formatEUR, planFor, ISSUER } from "@/lib/billing";
 
 /* Transactional email via Resend. Best-effort (no-ops without RESEND_API_KEY).
    Terminal-branded, table-based HTML, web-safe fonts, hosted white logo.
@@ -160,4 +161,70 @@ export async function emailStudioNewRequest(clientName: string, ticketTitle: str
     shell(heading("New request") + para(`${bold(clientName)} just submitted a new request:`) +
       para(`<span style="font-family:${MONO};font-size:15px;color:${TXT};border-left:2px solid ${HL};padding-left:12px;display:inline-block;">${ticketTitle}</span>`) +
       button("Open studio", `${APP_URL}/`), footer.en));
+}
+
+/* ============================== invoices =============================== */
+
+function invoiceRow(label: string, value: string, strong = false): string {
+  return `<tr>
+    <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-family:${MONO};font-size:12px;color:${MUT};">${label}</td>
+    <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-family:${SANS};font-size:${strong ? 16 : 14}px;font-weight:${strong ? "bold" : "normal"};color:${TXT};text-align:right;">${value}</td>
+  </tr>`;
+}
+
+function invoiceBody(inv: Invoice, lang: Lang): string {
+  const plan = planFor(inv.plan);
+  const due = inv.dueAt ? new Date(inv.dueAt).toLocaleDateString(lang === "pt" ? "pt-PT" : "en-GB", { day: "2-digit", month: "long", year: "numeric" }) : "";
+  const t = lang === "pt"
+    ? { plan: "Plano", period: "Período", total: "Total a pagar", due: "Data limite", issued: "Emitida" }
+    : { plan: "Plan", period: "Period", total: "Amount due", due: "Due", issued: "Issued" };
+  let rows = invoiceRow(t.plan, `${plan.label} — ${lang === "pt" ? "design por subscrição" : "subscription design"}`);
+  rows += invoiceRow(t.period, inv.periodLabel);
+  rows += invoiceRow(t.issued, new Date(inv.issuedAt).toLocaleDateString(lang === "pt" ? "pt-PT" : "en-GB", { day: "2-digit", month: "long", year: "numeric" }));
+  if (due) rows += invoiceRow(t.due, due);
+  rows += invoiceRow(t.total, formatEUR(inv.amountCents), true);
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 4px;">${rows}</table>`;
+}
+
+function bankBlock(inv: Invoice, lang: Lang): string {
+  const t = lang === "pt"
+    ? { title: "PAGAMENTO POR TRANSFERÊNCIA", ref: "Referência", iban: "IBAN", bank: "Banco", name: "Beneficiário", note: "Usa a referência acima na transferência." }
+    : { title: "PAY BY BANK TRANSFER", ref: "Reference", iban: "IBAN", bank: "Bank", name: "Beneficiary", note: "Use the reference above on your transfer." };
+  const line = (k: string, v: string) => v ? `<div style="font-family:${MONO};font-size:12.5px;color:${TXT};margin:4px 0;">${k}: <span style="color:${MUT};">${v}</span></div>` : "";
+  return `<div style="background:${BG};border:1px solid ${LINE};border-radius:4px;padding:16px 18px;margin:6px 0 4px;">
+    <div style="font-family:${MONO};font-size:11px;letter-spacing:1px;color:${MUT};margin-bottom:8px;">[ ${t.title} ]</div>
+    ${line(t.name, ISSUER.name)}${line(t.iban, ISSUER.iban)}${line(t.bank, ISSUER.bank)}${line(t.ref, inv.number)}
+    <div style="font-family:${SANS};font-size:12.5px;color:${MUT};margin-top:8px;">${t.note}</div>
+  </div>`;
+}
+
+/** Email the invoice to the client AND to the studio (best-effort). */
+export async function emailInvoiceIssued(
+  inv: Invoice,
+  client: { name: string; email: string; language: Lang; portalToken: string },
+  opts?: { payUrl?: string },
+): Promise<void> {
+  const L = client.language;
+  const plan = planFor(inv.plan);
+  const t = L === "pt"
+    ? { subject: `Fatura ${inv.number} · PushUP`, h: `Fatura ${inv.number}`,
+        p: `Olá ${client.name}, aqui está a fatura do teu plano ${bold(plan.label)} (${formatEUR(inv.amountCents)}/mês).`,
+        pay: "Pagar com cartão", view: "Ver no Locker Room" }
+    : { subject: `Invoice ${inv.number} · PushUP`, h: `Invoice ${inv.number}`,
+        p: `Hi ${client.name}, here's your invoice for the ${bold(plan.label)} plan (${formatEUR(inv.amountCents)}/mo).`,
+        pay: "Pay by card", view: "View in your Locker Room" };
+  const payUrl = opts?.payUrl || `${APP_URL}/me`;
+  const cta = inv.method === "stripe"
+    ? button(t.pay, payUrl)
+    : bankBlock(inv, L) + button(t.view, `${APP_URL}/me`);
+  const html = shell(heading(t.h) + para(t.p) + invoiceBody(inv, L) + cta, footer[L]);
+  await send(client.email, t.subject, html);
+
+  if (STUDIO_EMAIL) {
+    const meta = `${inv.clientName || client.name} · ${plan.label} · ${formatEUR(inv.amountCents)} · ${inv.method === "stripe" ? "CARD" : "BANK TRANSFER"}`;
+    await send(STUDIO_EMAIL, `Invoice ${inv.number} — ${client.name}`,
+      shell(heading(`Invoice ${inv.number}`) + para(`Issued to ${bold(client.name)}.`) +
+        para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${meta} ]</span>`) +
+        invoiceBody({ ...inv, clientName: undefined }, "en") + button("Open billing", `${APP_URL}/billing`), footer.en));
+  }
 }

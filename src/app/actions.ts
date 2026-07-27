@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail } from "@/lib/data";
+import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
+  createInvoice, getInvoice, setInvoiceStatus } from "@/lib/data";
+import { planFor } from "@/lib/billing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
 import { requireStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
-import { hashPassword, signClient, CLIENT_COOKIE } from "@/lib/clientAuth";
+import { hashPassword, signClient, CLIENT_COOKIE, getClientSession } from "@/lib/clientAuth";
+import { getStripe, stripeEnabled, priceForPlan } from "@/lib/stripe";
 import * as mail from "@/lib/email";
 
 /* --------------------------------------------------------------- AI (Groq) */
@@ -99,7 +102,8 @@ export async function createClient(formData: FormData): Promise<void> {
   const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
   const language = formData.get("language") === "pt" ? "pt" : "en";
-  const plan = String(formData.get("plan") || "").trim() || null;
+  const plan = String(formData.get("plan") || "").trim() || "growth";
+  const method = formData.get("method") === "stripe" ? "stripe" : "bank_transfer";
   const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
   if (!name) return; // ignore empty submits
@@ -115,7 +119,7 @@ export async function createClient(formData: FormData): Promise<void> {
     logoUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
   }
 
-  const insertRow: Record<string, unknown> = { name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language, plan };
+  const insertRow: Record<string, unknown> = { name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language, plan, payment_method: method };
   if (password) insertRow.password_hash = await hashPassword(password);
   const { data, error } = await admin
     .from("clients")
@@ -136,7 +140,19 @@ export async function createClient(formData: FormData): Promise<void> {
   }
   await mail.emailStudioNewClient(data.name, company, language);
 
+  // First invoice for the plan → recorded in the system + emailed to client and studio.
+  const p = planFor(plan);
+  const now = new Date();
+  const periodLabel = now.toLocaleDateString(language === "pt" ? "pt-PT" : "en-GB", { month: "long", year: "numeric" });
+  const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(); // net 7 days
+  const invoice = await createInvoice({ clientId: data.id, plan, amountCents: p.amountCents, method, periodLabel, dueAt });
+  if (invoice) {
+    await mail.emailInvoiceIssued({ ...invoice, clientName: data.name },
+      { name: data.name, email: data.email ?? "", language, portalToken: data.portal_token });
+  }
+
   revalidatePath("/");
+  revalidatePath("/billing");
   redirect(`/client/${data.id}`);
 }
 
@@ -152,12 +168,14 @@ export async function updateClient(formData: FormData): Promise<void> {
   const contactsRaw = String(formData.get("contacts") || "");
   const language = formData.get("language") === "pt" ? "pt" : "en";
   const plan = String(formData.get("plan") || "").trim();
+  const method = formData.get("method");
   const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
 
   const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont, language };
   if (name) patch.name = name;
   if (plan) patch.plan = plan;
+  if (method === "stripe" || method === "bank_transfer") patch.payment_method = method;
   if (password) patch.password_hash = await hashPassword(password);
   if (logo instanceof File && logo.size > 0) {
     if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
@@ -177,6 +195,73 @@ export async function updateClient(formData: FormData): Promise<void> {
   }
   revalidatePath(`/client/${id}`);
   revalidatePath("/");
+}
+
+/* ------------------------------------------------------------------ Billing */
+
+export async function markInvoicePaid(invoiceId: string): Promise<void> {
+  await requireStudio();
+  await setInvoiceStatus(invoiceId, "paid");
+  revalidatePath("/billing");
+}
+
+export async function voidInvoice(invoiceId: string): Promise<void> {
+  await requireStudio();
+  await setInvoiceStatus(invoiceId, "void");
+  revalidatePath("/billing");
+}
+
+/** Issue the next invoice for a client (e.g. next month's bank-transfer bill). */
+export async function issueInvoiceForClient(clientId: string): Promise<void> {
+  await requireStudio();
+  const client = await getClientById(clientId);
+  if (!client) throw new Error("Client not found.");
+  const p = planFor(client.plan);
+  const method = client.paymentMethod === "stripe" ? "stripe" : "bank_transfer";
+  const now = new Date();
+  const periodLabel = now.toLocaleDateString(client.language === "pt" ? "pt-PT" : "en-GB", { month: "long", year: "numeric" });
+  const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const invoice = await createInvoice({ clientId, plan: client.plan, amountCents: p.amountCents, method, periodLabel, dueAt });
+  if (invoice) {
+    await mail.emailInvoiceIssued({ ...invoice, clientName: client.name },
+      { name: client.name, email: client.email, language: client.language, portalToken: client.portalToken });
+  }
+  revalidatePath("/billing");
+}
+
+/** Client-initiated: start a Stripe subscription checkout for the logged-in
+    client's plan. Redirects to Stripe's hosted checkout. */
+export async function startClientCheckout(): Promise<void> {
+  const clientId = await getClientSession();
+  if (!clientId) redirect("/enter");
+  const client = await getClientById(clientId);
+  if (!client) redirect("/enter");
+
+  const stripe = getStripe();
+  if (!stripe || !stripeEnabled()) redirect("/me?billing=unavailable");
+  const price = priceForPlan(client.plan);
+  if (!price) redirect("/me?billing=unpriced");
+
+  const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const { data: row } = await admin.from("clients").select("stripe_customer_id").eq("id", clientId).single();
+  let customerId = (row as { stripe_customer_id?: string | null } | null)?.stripe_customer_id || null;
+  if (!customerId) {
+    const customer = await stripe!.customers.create({ email: client.email || undefined, name: client.name, metadata: { clientId } });
+    customerId = customer.id;
+    await admin.from("clients").update({ stripe_customer_id: customerId }).eq("id", clientId);
+  }
+
+  const session = await stripe!.checkout.sessions.create({
+    mode: "subscription",
+    customer: customerId,
+    line_items: [{ price: price!, quantity: 1 }],
+    success_url: `${appUrl}/me?paid=1`,
+    cancel_url: `${appUrl}/me`,
+    metadata: { clientId },
+    subscription_data: { metadata: { clientId } },
+  });
+  if (!session.url) redirect("/me?billing=error");
+  redirect(session.url!);
 }
 
 export async function setOnboardingStep(clientId: string, key: string, done: boolean): Promise<void> {

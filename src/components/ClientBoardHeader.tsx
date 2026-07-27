@@ -61,6 +61,11 @@ export default function ClientBoardHeader({ client }: { client: ClientRecord }) 
                 <input name="password" type="text" placeholder="Leave blank to keep" autoComplete="off" style={dsInput} />
               </div>
             </div>
+            <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Payment method</label>
+            <select name="method" defaultValue={client.paymentMethod} style={dsInput}>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="stripe">Card (Stripe)</option>
+            </select>
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Invite more people (one email per line)</label>
             <textarea name="contacts" placeholder="teammate@company.com" style={dsTextarea} rows={2} />
             <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Logo {client.logoUrl ? "(replaces current)" : ""}</label>

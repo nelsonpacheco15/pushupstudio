@@ -27,7 +27,29 @@ alter table public.clients add column if not exists language text not null defau
 -- client accounts + billing plan
 alter table public.clients add column if not exists password_hash text;
 alter table public.clients add column if not exists plan text not null default 'growth';
+alter table public.clients add column if not exists payment_method text not null default 'bank_transfer';
+alter table public.clients add column if not exists stripe_customer_id text;
+alter table public.clients add column if not exists stripe_subscription_id text;
 create unique index if not exists clients_portal_token_idx on public.clients(portal_token);
+
+-- invoices (one row per billed period; bank transfer + stripe)
+create table if not exists public.invoices (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  number text not null,
+  plan text not null default 'growth',
+  amount_cents integer not null default 0,
+  currency text not null default 'eur',
+  method text not null default 'bank_transfer',
+  status text not null default 'sent',
+  period_label text,
+  stripe_invoice_id text,
+  issued_at timestamptz not null default now(),
+  due_at timestamptz,
+  paid_at timestamptz
+);
+create index if not exists invoices_client_idx on public.invoices(client_id);
+alter table public.invoices enable row level security;
 
 -- People invited from the client's company (they get the portal link).
 create table if not exists public.client_contacts (

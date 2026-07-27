@@ -6,9 +6,10 @@ import { DS } from "@/lib/theme";
 const ITEMS = [
   { key: "overview", label: "HQ", href: "/", icon: "▚" },
   { key: "stylescapes", label: "Stylescapes", href: "/stylescapes", icon: "❋" },
+  { key: "billing", label: "Billing", href: "/billing", icon: "€" },
 ];
 
-export default function StudioNav({ active }: { active: "overview" | "stylescapes" }) {
+export default function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" }) {
   return (
     <aside style={{ width: 232, flex: "0 0 232px", background: DS.bg2, borderRight: `1px solid ${DS.border}`,
       minHeight: "100vh", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0 }}>

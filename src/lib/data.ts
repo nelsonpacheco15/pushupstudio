@@ -73,6 +73,7 @@ export interface ClientRecord {
   language: Lang;
   portalToken: string;
   plan: string;
+  paymentMethod: string;
 }
 
 // "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
@@ -83,7 +84,7 @@ interface ClientRow {
   id: string; name: string; company: string | null; email: string | null;
   logo_url: string | null; brand_color: string | null; brand_font: string | null;
   language: string | null; portal_token: string; created_at?: string;
-  password_hash?: string | null; plan?: string | null;
+  password_hash?: string | null; plan?: string | null; payment_method?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -91,7 +92,7 @@ function mapClient(data: ClientRow): ClientRecord {
     id: data.id, name: data.name, company: data.company ?? "", email: data.email ?? "",
     logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
     language: (data.language === "pt" ? "pt" : "en"), portalToken: data.portal_token,
-    plan: data.plan || "growth",
+    plan: data.plan || "growth", paymentMethod: data.payment_method || "bank_transfer",
   };
 }
 
@@ -208,6 +209,76 @@ export async function getClientAuthByEmail(email: string): Promise<{ id: string;
 export async function getClientByPortalToken(token: string): Promise<ClientRecord | null> {
   const { data } = await admin.from("clients").select(CLIENT_COLS).eq("portal_token", token).single();
   return data ? mapClient(data as ClientRow) : null;
+}
+
+/* ----------------------------------------------------------------- Invoices */
+
+export interface Invoice {
+  id: string; clientId: string; clientName?: string; number: string;
+  plan: string; amountCents: number; currency: string;
+  method: string; status: string; periodLabel: string;
+  issuedAt: string; dueAt: string | null; paidAt: string | null;
+  stripeInvoiceId: string | null;
+}
+
+interface InvoiceRow {
+  id: string; client_id: string; number: string; plan: string;
+  amount_cents: number; currency: string; method: string; status: string;
+  period_label: string | null; issued_at: string; due_at: string | null;
+  paid_at: string | null; stripe_invoice_id: string | null;
+  clients?: { name: string } | null;
+}
+
+function mapInvoice(r: InvoiceRow): Invoice {
+  return {
+    id: r.id, clientId: r.client_id, clientName: r.clients?.name, number: r.number,
+    plan: r.plan, amountCents: r.amount_cents, currency: r.currency,
+    method: r.method, status: r.status, periodLabel: r.period_label ?? "",
+    issuedAt: r.issued_at, dueAt: r.due_at, paidAt: r.paid_at, stripeInvoiceId: r.stripe_invoice_id,
+  };
+}
+
+/** Next human invoice number, e.g. PU-2026-0007 (per calendar year). */
+async function nextInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const { count } = await admin.from("invoices").select("id", { count: "exact", head: true })
+    .gte("issued_at", `${year}-01-01`).lte("issued_at", `${year}-12-31T23:59:59`);
+  return `PU-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
+}
+
+export async function createInvoice(input: {
+  clientId: string; plan: string; amountCents: number; method: string;
+  periodLabel: string; dueAt?: string | null; status?: string;
+}): Promise<Invoice | null> {
+  const number = await nextInvoiceNumber();
+  const { data, error } = await admin.from("invoices").insert({
+    client_id: input.clientId, number, plan: input.plan, amount_cents: input.amountCents,
+    currency: "eur", method: input.method, status: input.status ?? "sent",
+    period_label: input.periodLabel, due_at: input.dueAt ?? null,
+  }).select("*").single();
+  if (error || !data) { console.warn("[invoice] create failed:", error?.message); return null; }
+  return mapInvoice(data as InvoiceRow);
+}
+
+export async function listInvoices(): Promise<Invoice[]> {
+  const { data } = await admin.from("invoices").select("*, clients(name)").order("issued_at", { ascending: false });
+  return (data ?? []).map((r) => mapInvoice(r as InvoiceRow));
+}
+
+export async function listInvoicesForClient(clientId: string): Promise<Invoice[]> {
+  const { data } = await admin.from("invoices").select("*").eq("client_id", clientId).order("issued_at", { ascending: false });
+  return (data ?? []).map((r) => mapInvoice(r as InvoiceRow));
+}
+
+export async function getInvoice(id: string): Promise<Invoice | null> {
+  const { data } = await admin.from("invoices").select("*, clients(name)").eq("id", id).single();
+  return data ? mapInvoice(data as InvoiceRow) : null;
+}
+
+export async function setInvoiceStatus(id: string, status: string): Promise<void> {
+  const patch: Record<string, unknown> = { status };
+  if (status === "paid") patch.paid_at = new Date().toISOString();
+  await admin.from("invoices").update(patch).eq("id", id);
 }
 
 /* ------------------------------------------------------------------ Tickets */
