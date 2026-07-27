@@ -23,8 +23,8 @@ const TYPE_ICON: Record<string, string> = {
 };
 
 export default function NotificationBell({
-  scope, initial, tone = "dark",
-}: { scope: "studio" | "client"; initial: NotifFeed; tone?: "dark" | "light" }) {
+  scope, initial, tone = "dark", placement = "inline",
+}: { scope: "studio" | "client"; initial: NotifFeed; tone?: "dark" | "light"; placement?: "inline" | "sidebar" }) {
   const [feed, setFeed] = useState<NotifFeed>(initial);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -70,8 +70,11 @@ export default function NotificationBell({
       <button onClick={toggle} aria-label="Notifications"
         style={{ position: "relative", width: 38, height: 38, borderRadius: 10, cursor: "pointer",
           background: open ? c.card : "transparent", border: `1px solid ${c.border}`, color: c.text,
-          fontSize: 16, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        ◔
+          display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
         {feed.unread > 0 && (
           <span style={{ position: "absolute", top: -5, right: -5, minWidth: 17, height: 17, padding: "0 4px",
             borderRadius: 999, background: "#D2452B", color: "#fff", fontSize: 10, fontWeight: 700,
@@ -82,7 +85,11 @@ export default function NotificationBell({
       </button>
 
       {open && (
-        <div style={{ position: "absolute", top: 46, right: 0, width: 340, maxWidth: "90vw", zIndex: 200,
+        <div style={{ position: "absolute", zIndex: 200,
+          ...(placement === "sidebar"
+            ? { top: 0, left: "calc(100% + 14px)" }
+            : { top: 46, right: 0 }),
+          width: 340, maxWidth: "90vw",
           background: c.bg, border: `1px solid ${c.border}`, borderRadius: 12, overflow: "hidden",
           boxShadow: "0 16px 44px rgba(0,0,0,0.5)" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${c.border}`,

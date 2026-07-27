@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getClientSession } from "@/lib/clientAuth";
-import { getClientById, listTickets, listInvoicesForClient, listClientNotifications } from "@/lib/data";
+import { getClientById, listTickets, listInvoicesForClient, listClientNotifications, getSettings, planAmountFromSettings } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
 import { stripeEnabled } from "@/lib/stripe";
 import PortalBoard, { type BillingStrip } from "@/components/PortalBoard";
@@ -13,8 +13,8 @@ export default async function LockerRoomPage() {
   if (!clientId) redirect("/enter");
   const client = await getClientById(clientId);
   if (!client) redirect("/enter");
-  const [tickets, invoices, notifItems] = await Promise.all([
-    listTickets(client.id), listInvoicesForClient(client.id), listClientNotifications(client.id),
+  const [tickets, invoices, notifItems, settings] = await Promise.all([
+    listTickets(client.id), listInvoicesForClient(client.id), listClientNotifications(client.id), getSettings(),
   ]);
   const notifications = { items: notifItems, unread: notifItems.filter((n) => !n.readAt).length };
 
@@ -22,7 +22,7 @@ export default async function LockerRoomPage() {
   const latest = invoices[0];
   const billing: BillingStrip = {
     planLabel: plan.label,
-    amountLabel: formatEUR(plan.amountCents),
+    amountLabel: formatEUR(planAmountFromSettings(client.plan, settings)),
     method: client.paymentMethod,
     status: latest?.status ?? "sent",
     // Card clients can pay only when Stripe is configured and there's an outstanding invoice.

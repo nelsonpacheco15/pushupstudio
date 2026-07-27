@@ -1,6 +1,8 @@
 import "server-only";
 import type { Lang, Invoice } from "@/lib/data";
-import { formatEUR, planFor, ISSUER } from "@/lib/billing";
+import { formatEUR, planFor } from "@/lib/billing";
+
+export interface InvoiceIssuer { name: string; iban: string; bank: string; }
 
 /* Transactional email via Resend. Best-effort (no-ops without RESEND_API_KEY).
    Terminal-branded, table-based HTML, web-safe fonts, hosted white logo.
@@ -203,14 +205,14 @@ function invoiceBody(inv: Invoice, lang: Lang): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 4px;">${rows}</table>`;
 }
 
-function bankBlock(inv: Invoice, lang: Lang): string {
+function bankBlock(inv: Invoice, lang: Lang, issuer: InvoiceIssuer): string {
   const t = lang === "pt"
     ? { title: "PAGAMENTO POR TRANSFERÊNCIA", ref: "Referência", iban: "IBAN", bank: "Banco", name: "Beneficiário", note: "Usa a referência acima na transferência." }
     : { title: "PAY BY BANK TRANSFER", ref: "Reference", iban: "IBAN", bank: "Bank", name: "Beneficiary", note: "Use the reference above on your transfer." };
   const line = (k: string, v: string) => v ? `<div style="font-family:${MONO};font-size:12.5px;color:${TXT};margin:4px 0;">${k}: <span style="color:${MUT};">${v}</span></div>` : "";
   return `<div style="background:${BG};border:1px solid ${LINE};border-radius:4px;padding:16px 18px;margin:6px 0 4px;">
     <div style="font-family:${MONO};font-size:11px;letter-spacing:1px;color:${MUT};margin-bottom:8px;">[ ${t.title} ]</div>
-    ${line(t.name, ISSUER.name)}${line(t.iban, ISSUER.iban)}${line(t.bank, ISSUER.bank)}${line(t.ref, inv.number)}
+    ${line(t.name, issuer.name)}${line(t.iban, issuer.iban)}${line(t.bank, issuer.bank)}${line(t.ref, inv.number)}
     <div style="font-family:${SANS};font-size:12.5px;color:${MUT};margin-top:8px;">${t.note}</div>
   </div>`;
 }
@@ -219,8 +221,9 @@ function bankBlock(inv: Invoice, lang: Lang): string {
 export async function emailInvoiceIssued(
   inv: Invoice,
   client: { name: string; email: string; language: Lang; portalToken: string },
-  opts?: { payUrl?: string },
+  opts?: { payUrl?: string; issuer?: InvoiceIssuer },
 ): Promise<void> {
+  const issuer = opts?.issuer ?? { name: "PushUP Design", iban: "", bank: "" };
   const L = client.language;
   const plan = planFor(inv.plan);
   const t = L === "pt"
@@ -233,7 +236,7 @@ export async function emailInvoiceIssued(
   const payUrl = opts?.payUrl || `${APP_URL}/me`;
   const cta = inv.method === "stripe"
     ? button(t.pay, payUrl)
-    : bankBlock(inv, L) + button(t.view, `${APP_URL}/me`);
+    : bankBlock(inv, L, issuer) + button(t.view, `${APP_URL}/me`);
   const html = shell(heading(t.h) + para(t.p) + invoiceBody(inv, L) + cta, footer[L]);
   await send(client.email, t.subject, html);
 

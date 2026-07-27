@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours } from "@/lib/data";
+import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours, getSettings } from "@/lib/data";
 import StudioNav from "@/components/StudioNav";
 import ClientsSection from "@/components/ClientsSection";
 import WeekHoursChart from "@/components/WeekHoursChart";
@@ -15,13 +15,14 @@ const PRI = ["Normal", "High", "Urgent"];
 const priColor = (p: number) => (p >= 2 ? DS.accent : p === 1 ? DS.amber : DS.mute);
 
 export default async function Overview() {
-  const [clients, stats, running, upNext, week] = await Promise.all([
-    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(),
+  const [clients, stats, running, upNext, week, settings] = await Promise.all([
+    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(), getSettings(),
   ]);
   const nowMs = Date.now();
+  const slaHours = settings.slaHours;
 
   const attention = clients
-    .filter((c) => c.oldestOpenAt && nowMs - new Date(c.oldestOpenAt).getTime() > 45 * 3600 * 1000)
+    .filter((c) => c.oldestOpenAt && nowMs - new Date(c.oldestOpenAt).getTime() > slaHours * 3600 * 1000)
     .sort((a, b) => new Date(a.oldestOpenAt!).getTime() - new Date(b.oldestOpenAt!).getTime());
 
   const tiles = [
@@ -65,7 +66,7 @@ export default async function Overview() {
           <Frame accent={DS.accent} pad={16} style={{ marginBottom: 16, background: DS.accentSoft }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span style={mono({ color: DS.accent, fontSize: 11, letterSpacing: 1 })}>▓ ATTENTION</span>
-              <span style={mono({ color: DS.mute, fontSize: 11.5 })}>waiting &gt; 45h for a delivery</span>
+              <span style={mono({ color: DS.mute, fontSize: 11.5 })}>waiting &gt; {slaHours}h for a delivery</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {attention.map((c) => (

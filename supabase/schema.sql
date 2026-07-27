@@ -114,6 +114,14 @@ create index if not exists notifications_audience_idx on public.notifications(au
 create index if not exists notifications_client_idx on public.notifications(client_id, created_at desc);
 alter table public.notifications enable row level security;
 
+-- studio settings (single-owner key/value store: bank details, plan prices, SLA…)
+create table if not exists public.app_settings (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_settings enable row level security;
+
 -- Client evaluation of a delivered design, on a ticket.
 create table if not exists public.ticket_feedback (
   id         uuid primary key default gen_random_uuid(),

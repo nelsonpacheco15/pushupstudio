@@ -9,9 +9,10 @@ const ITEMS = [
   { key: "overview", label: "HQ", href: "/", icon: "▚" },
   { key: "stylescapes", label: "Stylescapes", href: "/stylescapes", icon: "❋" },
   { key: "billing", label: "Billing", href: "/billing", icon: "€" },
+  { key: "settings", label: "Settings", href: "/settings", icon: "⚙" },
 ];
 
-export default async function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" }) {
+export default async function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" | "settings" }) {
   const items = await listStudioNotifications();
   const feed = { items, unread: items.filter((n) => !n.readAt).length };
   return (
@@ -26,7 +27,7 @@ export default async function StudioNav({ active }: { active: "overview" | "styl
             [ STUDIO&nbsp;OS ]
           </div>
         </div>
-        <NotificationBell scope="studio" initial={feed} />
+        <NotificationBell scope="studio" initial={feed} placement="sidebar" />
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 22 }}>

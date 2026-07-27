@@ -281,6 +281,51 @@ export async function setInvoiceStatus(id: string, status: string): Promise<void
   await admin.from("invoices").update(patch).eq("id", id);
 }
 
+/* ------------------------------------------------------------------ Settings */
+
+export interface StudioSettings {
+  legalName: string; vat: string; address: string; iban: string; bank: string;
+  studioEmail: string; fromEmail: string;
+  growthCents: number; scaleCents: number; slaHours: number;
+}
+
+const SETTINGS_DEFAULTS = (): StudioSettings => ({
+  legalName: process.env.PUSHUP_LEGAL_NAME || "PushUP Design",
+  vat: process.env.PUSHUP_VAT || "",
+  address: process.env.PUSHUP_ADDRESS || "",
+  iban: process.env.PUSHUP_IBAN || "",
+  bank: process.env.PUSHUP_BANK || "",
+  studioEmail: process.env.STUDIO_EMAIL || "",
+  fromEmail: process.env.EMAIL_FROM || "",
+  growthCents: 80000, scaleCents: 129900, slaHours: 45,
+});
+
+/** Merge saved settings (app_settings rows) over env/code defaults. */
+export async function getSettings(): Promise<StudioSettings> {
+  const d = SETTINGS_DEFAULTS();
+  const { data } = await admin.from("app_settings").select("key, value");
+  const m = new Map((data ?? []).map((r) => [r.key as string, r.value as string]));
+  const str = (k: string, fb: string) => (m.get(k) ?? fb);
+  const num = (k: string, fb: number) => { const v = m.get(k); const n = v == null ? NaN : Number(v); return Number.isFinite(n) ? n : fb; };
+  return {
+    legalName: str("legalName", d.legalName), vat: str("vat", d.vat), address: str("address", d.address),
+    iban: str("iban", d.iban), bank: str("bank", d.bank),
+    studioEmail: str("studioEmail", d.studioEmail), fromEmail: str("fromEmail", d.fromEmail),
+    growthCents: num("growthCents", d.growthCents), scaleCents: num("scaleCents", d.scaleCents),
+    slaHours: num("slaHours", d.slaHours),
+  };
+}
+
+export async function saveSettings(patch: Partial<Record<keyof StudioSettings, string>>): Promise<void> {
+  const rows = Object.entries(patch).map(([key, value]) => ({ key, value: String(value ?? ""), updated_at: new Date().toISOString() }));
+  if (rows.length) await admin.from("app_settings").upsert(rows, { onConflict: "key" });
+}
+
+/** Monthly amount (cents) for a plan, honouring settings overrides. */
+export function planAmountFromSettings(plan: string, s: StudioSettings): number {
+  return plan === "scale" ? s.scaleCents : s.growthCents;
+}
+
 /* ------------------------------------------------------------- Notifications */
 
 export interface NotificationRecord {

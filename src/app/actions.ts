@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
   createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions,
   notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
-  type NotificationRecord } from "@/lib/data";
+  getSettings, saveSettings, planAmountFromSettings, type NotificationRecord } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
@@ -174,16 +174,19 @@ export async function createClient(formData: FormData): Promise<void> {
     title: `New athlete: ${data.name}`, body: company || "", link: `/client/${data.id}` });
 
   // First invoice for the plan → recorded in the system + emailed to client and studio.
+  const settings = await getSettings();
   const p = planFor(plan);
+  const amountCents = planAmountFromSettings(plan, settings);
   const now = new Date();
   const periodLabel = now.toLocaleDateString(language === "pt" ? "pt-PT" : "en-GB", { month: "long", year: "numeric" });
   const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(); // net 7 days
-  const invoice = await createInvoice({ clientId: data.id, plan, amountCents: p.amountCents, method, periodLabel, dueAt });
+  const invoice = await createInvoice({ clientId: data.id, plan, amountCents, method, periodLabel, dueAt });
   if (invoice) {
     await mail.emailInvoiceIssued({ ...invoice, clientName: data.name },
-      { name: data.name, email: data.email ?? "", language, portalToken: data.portal_token });
+      { name: data.name, email: data.email ?? "", language, portalToken: data.portal_token },
+      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank } });
     await notify({ audience: "client", clientId: data.id, type: "invoice",
-      title: `Invoice ${invoice.number}`, body: `${p.label} — ${formatEUR(p.amountCents)}`, link: "/me" });
+      title: `Invoice ${invoice.number}`, body: `${p.label} — ${formatEUR(amountCents)}`, link: "/me" });
   }
 
   revalidatePath("/");
@@ -251,15 +254,19 @@ export async function issueInvoiceForClient(clientId: string): Promise<void> {
   await requireStudio();
   const client = await getClientById(clientId);
   if (!client) throw new Error("Client not found.");
-  const p = planFor(client.plan);
+  const settings = await getSettings();
+  const amountCents = planAmountFromSettings(client.plan, settings);
   const method = client.paymentMethod === "stripe" ? "stripe" : "bank_transfer";
   const now = new Date();
   const periodLabel = now.toLocaleDateString(client.language === "pt" ? "pt-PT" : "en-GB", { month: "long", year: "numeric" });
   const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const invoice = await createInvoice({ clientId, plan: client.plan, amountCents: p.amountCents, method, periodLabel, dueAt });
+  const invoice = await createInvoice({ clientId, plan: client.plan, amountCents, method, periodLabel, dueAt });
   if (invoice) {
     await mail.emailInvoiceIssued({ ...invoice, clientName: client.name },
-      { name: client.name, email: client.email, language: client.language, portalToken: client.portalToken });
+      { name: client.name, email: client.email, language: client.language, portalToken: client.portalToken },
+      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank } });
+    await notify({ audience: "client", clientId, type: "invoice",
+      title: `Invoice ${invoice.number}`, body: `${planFor(client.plan).label} — ${formatEUR(amountCents)}`, link: "/me" });
   }
   revalidatePath("/billing");
 }
@@ -297,6 +304,24 @@ export async function startClientCheckout(): Promise<void> {
   });
   if (!session.url) redirect("/me?billing=error");
   redirect(session.url!);
+}
+
+/* -------------------------------------------------------------- Settings */
+
+export async function updateSettings(formData: FormData): Promise<void> {
+  await requireStudio();
+  const s = (k: string) => String(formData.get(k) || "").trim();
+  // Plan prices entered in euros; stored in cents.
+  const toCents = (v: string) => String(Math.max(0, Math.round(parseFloat(v.replace(",", ".")) * 100)) || 0);
+  await saveSettings({
+    legalName: s("legalName"), vat: s("vat"), address: s("address"),
+    iban: s("iban"), bank: s("bank"), studioEmail: s("studioEmail"), fromEmail: s("fromEmail"),
+    growthCents: toCents(s("growthEuros")), scaleCents: toCents(s("scaleEuros")),
+    slaHours: String(Math.max(1, Math.round(Number(s("slaHours")) || 45))),
+  });
+  revalidatePath("/settings");
+  revalidatePath("/billing");
+  revalidatePath("/");
 }
 
 export async function setOnboardingStep(clientId: string, key: string, done: boolean): Promise<void> {

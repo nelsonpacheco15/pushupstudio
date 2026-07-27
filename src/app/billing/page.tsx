@@ -1,7 +1,7 @@
 import StudioNav from "@/components/StudioNav";
 import { Scanlines, DitherCorner } from "@/components/crt";
-import { listInvoices } from "@/lib/data";
-import { formatEUR, planFor, ISSUER } from "@/lib/billing";
+import { listInvoices, getSettings } from "@/lib/data";
+import { formatEUR, planFor } from "@/lib/billing";
 import { DS } from "@/lib/theme";
 import { markInvoicePaid, voidInvoice } from "@/app/actions";
 
@@ -18,7 +18,7 @@ const STATUS_STYLE: Record<string, { label: string; color: string }> = {
 };
 
 export default async function BillingPage() {
-  const invoices = await listInvoices();
+  const [invoices, settings] = await Promise.all([listInvoices(), getSettings()]);
   const outstanding = invoices.filter((i) => i.status === "sent").reduce((s, i) => s + i.amountCents, 0);
   const paidThisYear = invoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
   const mrr = invoices.filter((i) => i.status !== "void")
@@ -49,11 +49,11 @@ export default async function BillingPage() {
           ))}
         </div>
 
-        {!ISSUER.iban && (
-          <div style={{ background: DS.card, border: `1px solid ${DS.amber}`, borderRadius: DS.radius, padding: "12px 16px", marginBottom: 20,
+        {!settings.iban && (
+          <a href="/settings" style={{ display: "block", background: DS.card, border: `1px solid ${DS.amber}`, borderRadius: DS.radius, padding: "12px 16px", marginBottom: 20,
             fontSize: 12.5, color: DS.amber, fontFamily: DS.mono }}>
-            ⚠ Set PUSHUP_IBAN / PUSHUP_BANK / PUSHUP_VAT env vars so bank-transfer invoices show your payment details.
-          </div>
+            ⚠ Add your IBAN in Settings so bank-transfer invoices show clients where to pay. →
+          </a>
         )}
 
         {/* invoice table */}
