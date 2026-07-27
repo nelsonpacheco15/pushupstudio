@@ -11,6 +11,7 @@ import {
   saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword, saveClientWhatsApp, resendSetupInvite,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
+import { signSetupToken } from "@/lib/clientAuth";
 import { DS, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,10 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
   const paused = client.status === "paused";
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
   const portalUrl = `${appUrl}/portal/${client.portalToken}`;
+  // Setup (set-your-password) invite links — share directly if email is unreliable.
+  const clientInviteUrl = `${appUrl}/setup/${await signSetupToken("client", id)}`;
+  const contactInvite: Record<string, string> = {};
+  for (const ct of contacts) contactInvite[ct.id] = `${appUrl}/setup/${await signSetupToken("contact", ct.id)}`;
 
   return (
     <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text }}>
@@ -135,8 +140,9 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
               <div style={{ fontSize: 12, color: DS.mute, marginTop: 3 }}>Emails the primary contact a link to set their own password.</div>
             </div>
             <form action={resendSetupInvite.bind(null, "client", id, id)}>
-              <button type="submit" style={dsBtnGhost}>Send setup invite</button>
+              <button type="submit" style={dsBtnGhost}>Email invite</button>
             </form>
+            <CopyButton text={clientInviteUrl} label="Copy invite link" />
             {client.driveFolderUrl && (
               <a href={client.driveFolderUrl} target="_blank" rel="noreferrer" style={{ ...dsBtnGhost, textDecoration: "none" }}>📁 Open Drive</a>
             )}
@@ -268,8 +274,11 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
               <span style={{ fontSize: 13, flex: 1, minWidth: 160 }}>{ct.name ? `${ct.name} · ` : ""}{ct.email}</span>
               <span style={mono({ fontSize: 10, letterSpacing: 0.5, color: ct.hasLogin ? "#7FB77E" : DS.faint })}>{ct.hasLogin ? "● CAN LOG IN" : "○ NO LOGIN"}</span>
               <form action={resendSetupInvite.bind(null, "contact", ct.id, id)}>
-                <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Send invite</button>
+                <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Email invite</button>
               </form>
+              <CopyButton text={contactInvite[ct.id]} label="Copy link" />
+              <a href={`https://wa.me/?text=${encodeURIComponent(`Set up your PushUP access: ${contactInvite[ct.id]}`)}`} target="_blank" rel="noreferrer"
+                style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11, textDecoration: "none" }}>WhatsApp</a>
               <form action={setContactPassword.bind(null, ct.id, id)} style={{ display: "flex", gap: 6 }}>
                 <input name="password" type="text" placeholder={ct.hasLogin ? "Reset password" : "Set password"} autoComplete="off" style={{ ...dsInput, padding: "5px 8px", fontSize: 12, width: 130 }} />
                 <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Save</button>
