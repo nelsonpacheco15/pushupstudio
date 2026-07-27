@@ -6,7 +6,8 @@ import { cookies } from "next/headers";
 import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
   createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions,
   notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
-  getSettings, saveSettings, planAmountFromSettings, type NotificationRecord } from "@/lib/data";
+  getSettings, saveSettings, planAmountFromSettings,
+  insertBrandAsset, deleteBrandAsset, type NotificationRecord } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
 import { issueMonthlyInvoice } from "@/lib/invoicing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
@@ -331,6 +332,41 @@ export async function deleteClient(id: string): Promise<void> {
   if (error) throw new Error(error.message);
   revalidatePath("/");
   redirect("/");
+}
+
+/* ----------------------------------------------------------------- Brand Hub */
+
+export async function saveBrandInfo(clientId: string, formData: FormData): Promise<void> {
+  await requireStudio();
+  const palette = String(formData.get("palette") || "")
+    .split(/[\s,;]+/).map((s) => s.trim()).filter((s) => /^#?[0-9a-fA-F]{3,8}$/.test(s))
+    .map((s) => (s.startsWith("#") ? s : `#${s}`)).slice(0, 12);
+  const guidelines = String(formData.get("guidelines") || "").trim();
+  const { error } = await admin.from("clients").update({ brand_palette: palette, brand_guidelines: guidelines }).eq("id", clientId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
+export async function uploadBrandAsset(clientId: string, formData: FormData): Promise<void> {
+  await requireStudio();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return;
+  if (file.size > 25 * 1024 * 1024) throw new Error("File too large (max 25MB).");
+  const safeName = (file.name || "asset").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `brand-assets/${clientId}/${Date.now()}-${safeName}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, { contentType: file.type || "application/octet-stream", upsert: true });
+  if (upErr) throw new Error(upErr.message);
+  const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const kind = file.type.startsWith("image/") ? "image" : "file";
+  await insertBrandAsset(clientId, file.name || safeName, url, kind);
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
+export async function removeBrandAsset(assetId: string, clientId: string): Promise<void> {
+  await requireStudio();
+  await deleteBrandAsset(assetId);
+  revalidatePath(`/client/${clientId}/manage`);
 }
 
 export async function addClientContact(clientId: string, formData: FormData): Promise<void> {

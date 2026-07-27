@@ -74,6 +74,8 @@ export interface ClientRecord {
   portalToken: string;
   plan: string;
   paymentMethod: string;
+  brandPalette: string[];
+  brandGuidelines: string;
 }
 
 // "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
@@ -85,6 +87,7 @@ interface ClientRow {
   logo_url: string | null; brand_color: string | null; brand_font: string | null;
   language: string | null; portal_token: string; created_at?: string;
   password_hash?: string | null; plan?: string | null; payment_method?: string | null;
+  brand_palette?: string[] | null; brand_guidelines?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -93,7 +96,25 @@ function mapClient(data: ClientRow): ClientRecord {
     logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
     language: (data.language === "pt" ? "pt" : "en"), portalToken: data.portal_token,
     plan: data.plan || "growth", paymentMethod: data.payment_method || "bank_transfer",
+    brandPalette: Array.isArray(data.brand_palette) ? data.brand_palette : [],
+    brandGuidelines: data.brand_guidelines ?? "",
   };
+}
+
+export interface BrandAsset { id: string; name: string; url: string; kind: string; createdAt: string; }
+
+export async function listBrandAssets(clientId: string): Promise<BrandAsset[]> {
+  const { data } = await admin.from("brand_assets").select("id, name, url, kind, created_at")
+    .eq("client_id", clientId).order("created_at", { ascending: false });
+  return (data ?? []).map((a) => ({ id: a.id, name: a.name, url: a.url, kind: a.kind, createdAt: a.created_at }));
+}
+
+export async function insertBrandAsset(clientId: string, name: string, url: string, kind: string): Promise<void> {
+  await admin.from("brand_assets").insert({ client_id: clientId, name, url, kind });
+}
+
+export async function deleteBrandAsset(id: string): Promise<void> {
+  await admin.from("brand_assets").delete().eq("id", id);
 }
 
 export interface OnboardingState { registration: boolean; onboarding: boolean; whatsapp: boolean; drive: boolean; }

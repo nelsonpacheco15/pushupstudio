@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getClientById, getClientContacts, getOnboarding, listInvoicesForClient,
+  getClientById, getClientContacts, getOnboarding, listInvoicesForClient, listBrandAssets,
   ONBOARDING_KEYS, ONBOARDING_LABELS,
 } from "@/lib/data";
 import { formatEUR, planFor } from "@/lib/billing";
 import {
   updateClient, deleteClient, addClientContact, removeClientContact,
   setOnboardingStep, issueInvoiceForClient, markInvoicePaid,
+  saveBrandInfo, uploadBrandAsset, removeBrandAsset,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
 import { DS, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
@@ -40,8 +41,8 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const client = await getClientById(id);
   if (!client) notFound();
-  const [contacts, onboarding, invoices] = await Promise.all([
-    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id),
+  const [contacts, onboarding, invoices, assets] = await Promise.all([
+    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id), listBrandAssets(id),
   ]);
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
   const portalUrl = `${appUrl}/portal/${client.portalToken}`;
@@ -153,6 +154,57 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
               )}
             </div>
           ))}
+        </Section>
+
+        {/* BRAND HUB */}
+        <Section title="BRAND HUB">
+          <form action={saveBrandInfo.bind(null, id)}>
+            <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Palette (hex, comma-separated)</label>
+            <input name="palette" defaultValue={client.brandPalette.join(", ")} placeholder="#0B0B0D, #F4F1E9, #9C988C" style={dsInput} />
+            {client.brandPalette.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {client.brandPalette.map((hex, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${DS.border}`, borderRadius: 6, padding: "3px 8px 3px 4px" }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 4, background: hex, border: `1px solid ${DS.border}` }} />
+                    <span style={mono({ fontSize: 11, color: DS.mute })}>{hex}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label style={{ ...dsLabel, display: "block", margin: "14px 0 6px" }}>Guidelines / brand links</label>
+            <textarea name="guidelines" defaultValue={client.brandGuidelines} rows={3}
+              placeholder="Brand guide: https://…&#10;Fonts: https://…&#10;Tone: bold, energetic" style={dsTextarea} />
+            <div style={{ marginTop: 14 }}><button type="submit" style={dsBtn}>Save brand info</button></div>
+          </form>
+
+          <div style={{ borderTop: `1px solid ${DS.border}`, marginTop: 18, paddingTop: 16 }}>
+            <label style={{ ...dsLabel, display: "block", marginBottom: 10 }}>Assets ({assets.length})</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+              {assets.map((a) => (
+                <div key={a.id} style={{ width: 120, border: `1px solid ${DS.border}`, borderRadius: 8, overflow: "hidden", background: DS.bg }}>
+                  <a href={a.url} target="_blank" rel="noreferrer" style={{ height: 76, background: DS.card2,
+                    display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                    {a.kind === "image"
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={a.url} alt={a.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <span style={mono({ fontSize: 22, color: DS.faint })}>⤓</span>}
+                  </a>
+                  <div style={{ padding: "6px 8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <span style={{ fontSize: 10.5, color: DS.mute, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                    <form action={removeBrandAsset.bind(null, a.id, id)}>
+                      <button type="submit" style={{ background: "transparent", color: DS.faint, border: "none", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+              {assets.length === 0 && <div style={{ color: DS.mute, fontSize: 13 }}>No assets uploaded yet.</div>}
+            </div>
+            <form action={uploadBrandAsset.bind(null, id)} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input name="file" type="file" required style={{ ...dsInput, padding: 8, flex: 1 }} />
+              <button type="submit" style={dsBtn}>Upload</button>
+            </form>
+            <div style={{ fontSize: 11, color: DS.faint, marginTop: 6 }}>Logos, fonts, PDFs, images — up to 25MB each.</div>
+          </div>
         </Section>
 
         {/* CONTACTS */}

@@ -114,6 +114,20 @@ create index if not exists notifications_audience_idx on public.notifications(au
 create index if not exists notifications_client_idx on public.notifications(client_id, created_at desc);
 alter table public.notifications enable row level security;
 
+-- brand hub: extra brand info on the client + a per-client asset library
+alter table public.clients add column if not exists brand_palette jsonb not null default '[]'::jsonb;
+alter table public.clients add column if not exists brand_guidelines text default '';
+create table if not exists public.brand_assets (
+  id         uuid primary key default gen_random_uuid(),
+  client_id  uuid not null references public.clients(id) on delete cascade,
+  name       text not null,
+  url        text not null,
+  kind       text not null default 'file',
+  created_at timestamptz not null default now()
+);
+create index if not exists brand_assets_client_idx on public.brand_assets(client_id);
+alter table public.brand_assets enable row level security;
+
 -- studio settings (single-owner key/value store: bank details, plan prices, SLA…)
 create table if not exists public.app_settings (
   key        text primary key,
