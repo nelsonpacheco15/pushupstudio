@@ -74,6 +74,16 @@ export default async function SettingsPage() {
               hint="HQ flags a client when their oldest open request has waited longer than this." />
           </Section>
 
+          <Section title="RECURRING BILLING">
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" name="autoInvoice" defaultChecked={s.autoInvoice} style={{ width: 16, height: 16 }} />
+              <span style={{ fontSize: 13.5, color: DS.text }}>Automatically issue &amp; email each bank-transfer client’s invoice every month</span>
+            </label>
+            <div style={{ fontSize: 11, color: DS.faint, marginTop: 8 }}>
+              Runs daily and bills each client once, on their signup day-of-month. Card (Stripe) clients are billed by Stripe.
+            </div>
+          </Section>
+
           <button type="submit" style={{ ...dsBtn, padding: "11px 22px" }}>Save settings</button>
         </form>
       </main>

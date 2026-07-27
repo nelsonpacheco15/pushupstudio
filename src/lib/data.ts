@@ -286,7 +286,7 @@ export async function setInvoiceStatus(id: string, status: string): Promise<void
 export interface StudioSettings {
   legalName: string; vat: string; address: string; iban: string; bank: string;
   studioEmail: string; fromEmail: string;
-  growthCents: number; scaleCents: number; slaHours: number;
+  growthCents: number; scaleCents: number; slaHours: number; autoInvoice: boolean;
 }
 
 const SETTINGS_DEFAULTS = (): StudioSettings => ({
@@ -297,7 +297,7 @@ const SETTINGS_DEFAULTS = (): StudioSettings => ({
   bank: process.env.PUSHUP_BANK || "",
   studioEmail: process.env.STUDIO_EMAIL || "",
   fromEmail: process.env.EMAIL_FROM || "",
-  growthCents: 80000, scaleCents: 129900, slaHours: 45,
+  growthCents: 80000, scaleCents: 129900, slaHours: 45, autoInvoice: true,
 });
 
 /** Merge saved settings (app_settings rows) over env/code defaults. */
@@ -313,7 +313,30 @@ export async function getSettings(): Promise<StudioSettings> {
     studioEmail: str("studioEmail", d.studioEmail), fromEmail: str("fromEmail", d.fromEmail),
     growthCents: num("growthCents", d.growthCents), scaleCents: num("scaleCents", d.scaleCents),
     slaHours: num("slaHours", d.slaHours),
+    autoInvoice: str("autoInvoice", d.autoInvoice ? "on" : "off") !== "off",
   };
+}
+
+/** Lightweight client list for recurring billing (id + billing-relevant fields). */
+export interface BillingClient {
+  id: string; name: string; email: string; language: Lang; portalToken: string;
+  plan: string; paymentMethod: string; createdAt: string | null;
+}
+export async function listClientsForBilling(): Promise<BillingClient[]> {
+  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, created_at");
+  return (data ?? []).map((c) => ({
+    id: c.id as string, name: c.name as string, email: (c.email as string) ?? "",
+    language: (c.language === "pt" ? "pt" : "en") as Lang, portalToken: c.portal_token as string,
+    plan: (c.plan as string) || "growth", paymentMethod: (c.payment_method as string) || "bank_transfer",
+    createdAt: (c.created_at as string) ?? null,
+  }));
+}
+
+/** True if an invoice already exists for this client for the given period label. */
+export async function hasInvoiceForPeriod(clientId: string, periodLabel: string): Promise<boolean> {
+  const { count } = await admin.from("invoices").select("id", { count: "exact", head: true })
+    .eq("client_id", clientId).eq("period_label", periodLabel).neq("status", "void");
+  return (count ?? 0) > 0;
 }
 
 export async function saveSettings(patch: Partial<Record<keyof StudioSettings, string>>): Promise<void> {

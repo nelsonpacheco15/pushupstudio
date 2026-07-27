@@ -8,6 +8,7 @@ import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEm
   notify, listStudioNotifications, listClientNotifications, markStudioNotificationsRead, markClientNotificationsRead,
   getSettings, saveSettings, planAmountFromSettings, type NotificationRecord } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
+import { issueMonthlyInvoice } from "@/lib/invoicing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
 import { requireStudio, isStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
@@ -255,20 +256,9 @@ export async function issueInvoiceForClient(clientId: string): Promise<void> {
   const client = await getClientById(clientId);
   if (!client) throw new Error("Client not found.");
   const settings = await getSettings();
-  const amountCents = planAmountFromSettings(client.plan, settings);
-  const method = client.paymentMethod === "stripe" ? "stripe" : "bank_transfer";
-  const now = new Date();
-  const periodLabel = now.toLocaleDateString(client.language === "pt" ? "pt-PT" : "en-GB", { month: "long", year: "numeric" });
-  const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const invoice = await createInvoice({ clientId, plan: client.plan, amountCents, method, periodLabel, dueAt });
-  if (invoice) {
-    await mail.emailInvoiceIssued({ ...invoice, clientName: client.name },
-      { name: client.name, email: client.email, language: client.language, portalToken: client.portalToken },
-      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank } });
-    await notify({ audience: "client", clientId, type: "invoice",
-      title: `Invoice ${invoice.number}`, body: `${planFor(client.plan).label} — ${formatEUR(amountCents)}`, link: "/me" });
-  }
+  await issueMonthlyInvoice(client, settings);
   revalidatePath("/billing");
+  revalidatePath(`/client/${clientId}/manage`);
 }
 
 /** Client-initiated: start a Stripe subscription checkout for the logged-in
@@ -318,6 +308,7 @@ export async function updateSettings(formData: FormData): Promise<void> {
     iban: s("iban"), bank: s("bank"), studioEmail: s("studioEmail"), fromEmail: s("fromEmail"),
     growthCents: toCents(s("growthEuros")), scaleCents: toCents(s("scaleEuros")),
     slaHours: String(Math.max(1, Math.round(Number(s("slaHours")) || 45))),
+    autoInvoice: formData.get("autoInvoice") === "on" ? "on" : "off",
   });
   revalidatePath("/settings");
   revalidatePath("/billing");
