@@ -79,6 +79,12 @@ export default async function SettingsPage() {
             <div style={{ fontSize: 11, color: DS.faint, marginTop: -4 }}>Promised delivery time per plan — reps show a due/overdue badge against it.</div>
           </Section>
 
+          <Section title="SLACK NOTIFICATIONS">
+            <Field label="Slack incoming webhook URL" name="slackWebhookUrl" value={s.slackWebhookUrl}
+              placeholder="https://hooks.slack.com/services/…"
+              hint="Studio notifications (new requests, feedback, invoices) also post to this Slack channel. Create one at api.slack.com → Incoming Webhooks." />
+          </Section>
+
           <Section title="RECURRING BILLING">
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input type="checkbox" name="autoInvoice" defaultChecked={s.autoInvoice} style={{ width: 16, height: 16 }} />

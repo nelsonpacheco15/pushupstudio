@@ -57,6 +57,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     ["Type", ticket.form.type],
     ["Deadline", ticket.form.deadline],
     ["References", ticket.form.references],
+    // template answers (any other form keys)
+    ...Object.entries(ticket.form).filter(([k]) => !["type", "deadline", "references"].includes(k)),
   ].filter(([, v]) => v) as [string, string][];
 
   return (

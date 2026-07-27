@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours, getSettings, getSatisfaction } from "@/lib/data";
+import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours, getSettings } from "@/lib/data";
 import StudioNav from "@/components/StudioNav";
 import ClientsSection from "@/components/ClientsSection";
 import WeekHoursChart from "@/components/WeekHoursChart";
@@ -15,8 +15,8 @@ const PRI = ["Normal", "High", "Urgent"];
 const priColor = (p: number) => (p >= 2 ? DS.accent : p === 1 ? DS.amber : DS.mute);
 
 export default async function Overview() {
-  const [clients, stats, running, upNext, week, settings, csat] = await Promise.all([
-    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(), getSettings(), getSatisfaction(),
+  const [clients, stats, running, upNext, week, settings] = await Promise.all([
+    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(), getSettings(),
   ]);
   const nowMs = Date.now();
   const slaHours = settings.slaHours;
@@ -32,7 +32,6 @@ export default async function Overview() {
     { label: "Queue depth", value: String(stats.queueDepth) },
     { label: "Awaiting client", value: String(stats.awaitingClient) },
     { label: "Avg turnaround", value: stats.avgTurnaroundSeconds ? formatDuration(stats.avgTurnaroundSeconds) : "—" },
-    { label: "Satisfaction", value: csat.avg == null ? "—" : `${csat.avg.toFixed(1)}/10` },
   ];
 
   const mono = (extra: React.CSSProperties = {}) => ({ fontFamily: DS.mono, ...extra });

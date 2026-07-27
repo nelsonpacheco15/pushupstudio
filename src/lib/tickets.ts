@@ -57,6 +57,39 @@ export const REQUEST_TYPES = [
   "Other",
 ];
 
+/** Extra intake fields tailored per request type (request templates). Answers are
+    stored on the ticket form and appended to the brief. */
+export interface TemplateField { name: string; label: string; placeholder?: string; }
+export const REQUEST_TEMPLATES: Record<string, TemplateField[]> = {
+  "Logo": [
+    { name: "Brand name", label: "Brand / business name", placeholder: "Name to feature" },
+    { name: "Style", label: "Style you're after", placeholder: "Minimal, playful, bold…" },
+    { name: "Usage", label: "Where it'll be used", placeholder: "Web, print, app icon…" },
+  ],
+  "Social media": [
+    { name: "Platform", label: "Platform(s)", placeholder: "Instagram, LinkedIn…" },
+    { name: "Format", label: "Format", placeholder: "Post, story, carousel…" },
+    { name: "How many", label: "How many", placeholder: "e.g. 3 posts" },
+    { name: "On-design copy", label: "Text to include", placeholder: "Any copy on the design" },
+  ],
+  "Website / landing page": [
+    { name: "Sections", label: "Pages / sections", placeholder: "Hero, features, pricing…" },
+    { name: "Inspiration", label: "Sites you like", placeholder: "Links" },
+  ],
+  "Print": [
+    { name: "Size", label: "Size / dimensions", placeholder: "A4, business card…" },
+    { name: "Quantity", label: "Quantity", placeholder: "e.g. 500" },
+  ],
+  "Packaging": [
+    { name: "Product", label: "Product", placeholder: "What's being packaged" },
+    { name: "Dimensions", label: "Dimensions", placeholder: "Box / label size…" },
+  ],
+  "Illustration": [
+    { name: "Subject", label: "Subject", placeholder: "What to illustrate" },
+    { name: "Style", label: "Style", placeholder: "Flat, line, 3D…" },
+  ],
+};
+
 /** Coarse "time since" label, e.g. "3d 4h", "5h 12m", "just now". */
 export function formatAgo(iso: string, nowMs: number): string {
   const s = Math.max(0, Math.floor((nowMs - new Date(iso).getTime()) / 1000));

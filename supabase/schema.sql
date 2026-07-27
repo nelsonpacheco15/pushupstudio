@@ -61,6 +61,8 @@ create table if not exists public.client_contacts (
 );
 create index if not exists client_contacts_client_idx on public.client_contacts(client_id);
 alter table public.client_contacts enable row level security;
+-- multi-seat: a contact with a password can log into the client's Locker Room
+alter table public.client_contacts add column if not exists password_hash text;
 
 -- Work requests. A ticket moves across the kanban via `status`.
 -- Business rule: a client may have at most ONE ticket in 'in_progress'

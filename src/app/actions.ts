@@ -312,6 +312,7 @@ export async function updateSettings(formData: FormData): Promise<void> {
     autoInvoice: formData.get("autoInvoice") === "on" ? "on" : "off",
     growthSlaHours: String(Math.max(1, Math.round(Number(s("growthSlaHours")) || 48))),
     scaleSlaHours: String(Math.max(1, Math.round(Number(s("scaleSlaHours")) || 24))),
+    slackWebhookUrl: s("slackWebhookUrl"),
   });
   revalidatePath("/settings");
   revalidatePath("/billing");
@@ -384,8 +385,20 @@ export async function addClientContact(clientId: string, formData: FormData): Pr
   await requireStudio();
   const email = String(formData.get("email") || "").trim();
   const name = String(formData.get("name") || "").trim();
+  const password = String(formData.get("password") || "");
   if (!email) return;
-  await admin.from("client_contacts").insert({ client_id: clientId, email, name: name || null });
+  const row: Record<string, unknown> = { client_id: clientId, email, name: name || null };
+  if (password) row.password_hash = await hashPassword(password);
+  await admin.from("client_contacts").insert(row);
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
+/** Set / reset a contact seat's Locker Room password. */
+export async function setContactPassword(contactId: string, clientId: string, formData: FormData): Promise<void> {
+  await requireStudio();
+  const password = String(formData.get("password") || "");
+  if (!password) return;
+  await admin.from("client_contacts").update({ password_hash: await hashPassword(password) }).eq("id", contactId);
   revalidatePath(`/client/${clientId}/manage`);
 }
 
@@ -449,13 +462,21 @@ export async function deleteStylescape(id: string): Promise<void> {
 
 export async function createTicket(formData: FormData): Promise<void> {
   const title = String(formData.get("title") || "").trim() || "Untitled request";
-  const description = String(formData.get("description") || "").trim();
+  let description = String(formData.get("description") || "").trim();
   const createdBy = formData.get("createdBy") === "client" ? "client" : "studio";
   const portalToken = String(formData.get("portalToken") || "");
+  // Template answers arrive as tf_<label> fields; fold them into form + the brief.
+  const templateFields: Record<string, string> = {};
+  for (const [k, v] of formData.entries()) {
+    if (k.startsWith("tf_") && typeof v === "string" && v.trim()) templateFields[k.slice(3)] = v.trim();
+  }
+  const extraLines = Object.entries(templateFields).map(([k, v]) => `${k}: ${v}`).join("\n");
+  if (extraLines) description = description ? `${description}\n\n${extraLines}` : extraLines;
   const form = {
     type: String(formData.get("type") || ""),
     deadline: String(formData.get("deadline") || ""),
     references: String(formData.get("references") || ""),
+    ...templateFields,
   };
 
   // Resolve the client. For portal (client) submissions ALWAYS derive the
@@ -627,6 +648,25 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
   }
   revalidatePath(`/ticket/${ticketId}`);
   if (version) revalidatePath("/");
+}
+
+/** Client: reorder a request within their own backlog (up = higher). */
+export async function reorderBacklogTicket(portalToken: string, ticketId: string, direction: "up" | "down"): Promise<void> {
+  const client = await getClientByPortalToken(portalToken);
+  if (!client) return;
+  const { data } = await admin.from("tickets").select("id")
+    .eq("client_id", client.id).eq("status", "backlog")
+    .order("position", { ascending: true }).order("created_at", { ascending: true });
+  const ids = (data ?? []).map((t) => t.id as string);
+  const idx = ids.indexOf(ticketId);
+  const target = direction === "up" ? idx - 1 : idx + 1;
+  if (idx < 0 || target < 0 || target >= ids.length) return;
+  [ids[idx], ids[target]] = [ids[target], ids[idx]];
+  // Rewrite positions to the new order.
+  await Promise.all(ids.map((id, i) => admin.from("tickets").update({ position: i }).eq("id", id)));
+  revalidatePath(`/portal/${portalToken}`);
+  revalidatePath("/me");
+  revalidatePath(`/client/${client.id}`);
 }
 
 /** Client: evaluate the delivered design from the portal. */

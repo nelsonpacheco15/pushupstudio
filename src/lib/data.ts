@@ -103,23 +103,6 @@ function mapClient(data: ClientRow): ClientRecord {
   };
 }
 
-export interface Satisfaction { avg: number | null; count: number; }
-
-/** Average client rating (0-10) across all scored feedback, optionally per client. */
-export async function getSatisfaction(clientId?: string): Promise<Satisfaction> {
-  let ticketIds: string[] | null = null;
-  if (clientId) {
-    const { data: ts } = await admin.from("tickets").select("id").eq("client_id", clientId);
-    ticketIds = (ts ?? []).map((t) => t.id as string);
-    if (ticketIds.length === 0) return { avg: null, count: 0 };
-  }
-  let q = admin.from("ticket_feedback").select("score").not("score", "is", null);
-  if (ticketIds) q = q.in("ticket_id", ticketIds);
-  const { data } = await q;
-  const scores = (data ?? []).map((r) => (r as { score: number }).score).filter((n) => typeof n === "number");
-  if (scores.length === 0) return { avg: null, count: 0 };
-  return { avg: scores.reduce((s, n) => s + n, 0) / scores.length, count: scores.length };
-}
 
 export interface BrandAsset { id: string; name: string; url: string; kind: string; createdAt: string; }
 
@@ -150,15 +133,15 @@ export async function getOnboarding(clientId: string): Promise<OnboardingState> 
   return { ...DEFAULT_ONBOARDING, ...(data.onboarding as Partial<OnboardingState>) };
 }
 
-export interface ClientContact { id: string; name: string; email: string; }
+export interface ClientContact { id: string; name: string; email: string; hasLogin: boolean; }
 
 export async function getClientContacts(clientId: string): Promise<ClientContact[]> {
   const { data } = await admin
     .from("client_contacts")
-    .select("id, name, email")
+    .select("id, name, email, password_hash")
     .eq("client_id", clientId)
     .order("created_at", { ascending: true });
-  return (data ?? []).map((c) => ({ id: c.id, name: c.name ?? "", email: c.email }));
+  return (data ?? []).map((c) => ({ id: c.id, name: c.name ?? "", email: c.email, hasLogin: !!(c as { password_hash?: string }).password_hash }));
 }
 
 export interface ClientSummary extends ClientRecord {
@@ -241,10 +224,15 @@ export async function getClientById(id: string): Promise<ClientRecord | null> {
 export async function getClientAuthByEmail(email: string): Promise<{ id: string; passwordHash: string } | null> {
   const clean = email.trim().toLowerCase();
   if (!clean) return null;
+  // Primary client account.
   const { data } = await admin.from("clients").select("id, email, password_hash").ilike("email", clean).limit(1);
   const row = data?.[0] as { id: string; password_hash?: string | null } | undefined;
-  if (!row || !row.password_hash) return null;
-  return { id: row.id, passwordHash: row.password_hash };
+  if (row?.password_hash) return { id: row.id, passwordHash: row.password_hash };
+  // Multi-seat: a contact with a password logs into their client's Locker Room.
+  const { data: cData } = await admin.from("client_contacts").select("client_id, password_hash").ilike("email", clean).limit(1);
+  const c = cData?.[0] as { client_id: string; password_hash?: string | null } | undefined;
+  if (c?.password_hash) return { id: c.client_id, passwordHash: c.password_hash };
+  return null;
 }
 
 export async function getClientByPortalToken(token: string): Promise<ClientRecord | null> {
@@ -328,7 +316,7 @@ export interface StudioSettings {
   legalName: string; vat: string; address: string; iban: string; bank: string;
   studioEmail: string; fromEmail: string;
   growthCents: number; scaleCents: number; slaHours: number; autoInvoice: boolean;
-  growthSlaHours: number; scaleSlaHours: number;
+  growthSlaHours: number; scaleSlaHours: number; slackWebhookUrl: string;
 }
 
 /** Promised turnaround (hours) for a plan. */
@@ -345,7 +333,7 @@ const SETTINGS_DEFAULTS = (): StudioSettings => ({
   studioEmail: process.env.STUDIO_EMAIL || "",
   fromEmail: process.env.EMAIL_FROM || "",
   growthCents: 80000, scaleCents: 129900, slaHours: 45, autoInvoice: true,
-  growthSlaHours: 48, scaleSlaHours: 24,
+  growthSlaHours: 48, scaleSlaHours: 24, slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || "",
 });
 
 /** Merge saved settings (app_settings rows) over env/code defaults. */
@@ -363,6 +351,7 @@ export async function getSettings(): Promise<StudioSettings> {
     slaHours: num("slaHours", d.slaHours),
     autoInvoice: str("autoInvoice", d.autoInvoice ? "on" : "off") !== "off",
     growthSlaHours: num("growthSlaHours", d.growthSlaHours), scaleSlaHours: num("scaleSlaHours", d.scaleSlaHours),
+    slackWebhookUrl: str("slackWebhookUrl", d.slackWebhookUrl),
   };
 }
 
@@ -410,6 +399,19 @@ interface NotificationInput {
   type: string; title: string; body?: string; link?: string | null;
 }
 
+/** Post a studio notification to Slack (best-effort) if a webhook is configured. */
+async function postToSlack(title: string, body?: string): Promise<void> {
+  try {
+    const { data } = await admin.from("app_settings").select("value").eq("key", "slackWebhookUrl").limit(1);
+    const url = (data?.[0]?.value as string) || process.env.SLACK_WEBHOOK_URL || "";
+    if (!url) return;
+    await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: `*${title}*${body ? `\n${body}` : ""}` }),
+    });
+  } catch (e) { console.warn("[slack] failed:", (e as Error).message); }
+}
+
 /** Create an in-app notification. Best-effort — never throws into the caller. */
 export async function notify(input: NotificationInput): Promise<void> {
   try {
@@ -418,6 +420,7 @@ export async function notify(input: NotificationInput): Promise<void> {
       type: input.type, title: input.title, body: input.body ?? "", link: input.link ?? null,
     });
   } catch (e) { console.warn("[notify] failed:", (e as Error).message); }
+  if (input.audience === "studio") await postToSlack(input.title, input.body);
 }
 
 function mapNotification(r: Record<string, unknown>): NotificationRecord {

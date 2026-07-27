@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { clientLogout, startClientCheckout, type NotifFeed } from "@/app/actions";
+import { clientLogout, startClientCheckout, reorderBacklogTicket, type NotifFeed } from "@/app/actions";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus, type Ticket } from "@/lib/tickets";
 import type { ClientRecord } from "@/lib/data";
 import RequestPanel from "@/components/RequestPanel";
@@ -75,6 +75,8 @@ export default function PortalBoard({
         <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
           {STATUSES.map((status: TicketStatus) => {
             const col = tickets.filter((t) => t.status === status);
+            if (status === "backlog") col.sort((a, b) => a.position - b.position);
+            const reorderable = status === "backlog" && col.length > 1;
             return (
               <div key={status} style={{ width: 220, flex: "0 0 220px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -83,14 +85,33 @@ export default function PortalBoard({
                   <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono'", fontSize: 12 }}>{col.length}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {col.map((t) => (
-                    <Link key={t.id} href={`${ticketHrefBase}/${t.id}`}
-                      style={{ display: "block", background: PANEL, border: `1px solid ${t.deliverableUrl ? PAPER : LINE}`, borderRadius: 10, padding: 12 }}>
-                      {t.form?.type && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: MUTE }}>{t.form.type}</div>}
-                      <div style={{ fontWeight: 600, fontSize: 13.5, marginTop: 3 }}>{t.title}</div>
-                      {t.deliverableUrl && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: PAPER, marginTop: 6 }}>◆ design ready — tap to review</div>}
-                    </Link>
-                  ))}
+                  {col.map((t, i) => {
+                    const card = (
+                      <Link href={`${ticketHrefBase}/${t.id}`}
+                        style={{ display: "block", flex: 1, minWidth: 0, background: PANEL, border: `1px solid ${t.deliverableUrl ? PAPER : LINE}`, borderRadius: 10, padding: 12 }}>
+                        {t.form?.type && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: MUTE }}>{t.form.type}</div>}
+                        <div style={{ fontWeight: 600, fontSize: 13.5, marginTop: 3 }}>{t.title}</div>
+                        {t.deliverableUrl && <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono'", color: PAPER, marginTop: 6 }}>◆ design ready — tap to review</div>}
+                      </Link>
+                    );
+                    if (!reorderable) return <div key={t.id}>{card}</div>;
+                    const arrow = (dir: "up" | "down", label: string, disabled: boolean) => (
+                      <form action={reorderBacklogTicket.bind(null, client.portalToken, t.id, dir)} style={{ flex: 1, display: "flex" }}>
+                        <button type="submit" disabled={disabled} title={dir === "up" ? "Move up" : "Move down"}
+                          style={{ flex: 1, background: "transparent", color: disabled ? "#3a382f" : MUTE, border: `1px solid ${LINE}`,
+                            borderRadius: 6, cursor: disabled ? "default" : "pointer", fontSize: 11, lineHeight: 1, padding: "2px 0" }}>{label}</button>
+                      </form>
+                    );
+                    return (
+                      <div key={t.id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+                        {card}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 22 }}>
+                          {arrow("up", "▲", i === 0)}
+                          {arrow("down", "▼", i === col.length - 1)}
+                        </div>
+                      </div>
+                    );
+                  })}
                   {col.length === 0 && <div style={{ fontSize: 12, color: MUTE, opacity: 0.5 }}>—</div>}
                 </div>
               </div>

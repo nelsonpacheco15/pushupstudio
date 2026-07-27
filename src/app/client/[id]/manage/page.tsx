@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getClientById, getClientContacts, getOnboarding, listInvoicesForClient, listBrandAssets, getSatisfaction,
+  getClientById, getClientContacts, getOnboarding, listInvoicesForClient, listBrandAssets,
   ONBOARDING_KEYS, ONBOARDING_LABELS,
 } from "@/lib/data";
 import { formatEUR, planFor } from "@/lib/billing";
 import {
   updateClient, deleteClient, addClientContact, removeClientContact,
   setOnboardingStep, issueInvoiceForClient, markInvoicePaid, setClientStatus,
-  saveBrandInfo, uploadBrandAsset, removeBrandAsset,
+  saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
 import { DS, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
@@ -41,8 +41,8 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const client = await getClientById(id);
   if (!client) notFound();
-  const [contacts, onboarding, invoices, assets, csat] = await Promise.all([
-    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id), listBrandAssets(id), getSatisfaction(id),
+  const [contacts, onboarding, invoices, assets] = await Promise.all([
+    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id), listBrandAssets(id),
   ]);
   const paused = client.status === "paused";
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
@@ -62,13 +62,6 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
           )}
           <h1 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 30, letterSpacing: -0.5, margin: 0 }}>{client.name}</h1>
           {paused && <span style={mono({ fontSize: 10, letterSpacing: 1, color: DS.amber, border: `1px solid ${DS.amber}`, padding: "3px 8px" })}>PAUSED</span>}
-          <div style={{ marginLeft: "auto", textAlign: "right" }}>
-            <div style={mono({ fontSize: 10, letterSpacing: 1, color: DS.faint })}>SATISFACTION</div>
-            <div style={{ fontFamily: DS.pixel, fontSize: 24, color: csat.avg == null ? DS.faint : DS.text }}>
-              {csat.avg == null ? "—" : `${csat.avg.toFixed(1)}/10`}
-            </div>
-            {csat.count > 0 && <div style={mono({ fontSize: 9.5, color: DS.faint })}>{csat.count} rating{csat.count === 1 ? "" : "s"}</div>}
-          </div>
         </div>
 
         {/* PROFILE */}
@@ -230,18 +223,25 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
 
         {/* CONTACTS */}
         <Section title="CONTACTS / SEATS">
+          <div style={{ fontSize: 11.5, color: DS.faint, marginBottom: 12 }}>Give a contact a password and they can log into this athlete’s Locker Room with their own email.</div>
           {contacts.length === 0 && <div style={{ color: DS.mute, fontSize: 13, marginBottom: 12 }}>No extra contacts.</div>}
           {contacts.map((ct) => (
-            <div key={ct.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderTop: `1px solid ${DS.border}` }}>
-              <span style={{ fontSize: 13, flex: 1 }}>{ct.name ? `${ct.name} · ` : ""}{ct.email}</span>
+            <div key={ct.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${DS.border}`, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, flex: 1, minWidth: 160 }}>{ct.name ? `${ct.name} · ` : ""}{ct.email}</span>
+              <span style={mono({ fontSize: 10, letterSpacing: 0.5, color: ct.hasLogin ? "#7FB77E" : DS.faint })}>{ct.hasLogin ? "● CAN LOG IN" : "○ NO LOGIN"}</span>
+              <form action={setContactPassword.bind(null, ct.id, id)} style={{ display: "flex", gap: 6 }}>
+                <input name="password" type="text" placeholder={ct.hasLogin ? "Reset password" : "Set password"} autoComplete="off" style={{ ...dsInput, padding: "5px 8px", fontSize: 12, width: 140 }} />
+                <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Save</button>
+              </form>
               <form action={removeClientContact.bind(null, ct.id, id)}>
-                <button type="submit" style={{ background: "transparent", color: DS.mute, border: `1px solid ${DS.border}`, borderRadius: 4, padding: "4px 9px", fontSize: 11, cursor: "pointer", fontFamily: DS.mono }}>Remove</button>
+                <button type="submit" style={{ background: "transparent", color: DS.mute, border: `1px solid ${DS.border}`, borderRadius: 4, padding: "5px 9px", fontSize: 11, cursor: "pointer", fontFamily: DS.mono }}>Remove</button>
               </form>
             </div>
           ))}
-          <form action={addClientContact.bind(null, id)} style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <input name="name" placeholder="Name (optional)" style={{ ...dsInput, flex: 1 }} />
-            <input name="email" type="email" placeholder="email@company.com" style={{ ...dsInput, flex: 2 }} />
+          <form action={addClientContact.bind(null, id)} style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <input name="name" placeholder="Name (optional)" style={{ ...dsInput, flex: 1, minWidth: 120 }} />
+            <input name="email" type="email" placeholder="email@company.com" required style={{ ...dsInput, flex: 2, minWidth: 160 }} />
+            <input name="password" type="text" placeholder="Password (optional)" autoComplete="off" style={{ ...dsInput, flex: 1, minWidth: 120 }} />
             <button type="submit" style={dsBtn}>Add</button>
           </form>
         </Section>
