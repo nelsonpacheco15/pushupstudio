@@ -77,6 +77,8 @@ export interface ClientRecord {
   status: string;
   brandPalette: string[];
   brandGuidelines: string;
+  whatsappPhone: string;
+  whatsappApiKey: string;
 }
 
 // "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
@@ -89,6 +91,7 @@ interface ClientRow {
   language: string | null; portal_token: string; created_at?: string;
   password_hash?: string | null; plan?: string | null; payment_method?: string | null;
   status?: string | null; brand_palette?: string[] | null; brand_guidelines?: string | null;
+  whatsapp_phone?: string | null; whatsapp_apikey?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -100,6 +103,7 @@ function mapClient(data: ClientRow): ClientRecord {
     status: data.status || "active",
     brandPalette: Array.isArray(data.brand_palette) ? data.brand_palette : [],
     brandGuidelines: data.brand_guidelines ?? "",
+    whatsappPhone: data.whatsapp_phone ?? "", whatsappApiKey: data.whatsapp_apikey ?? "",
   };
 }
 
@@ -402,28 +406,40 @@ interface NotificationInput {
   type: string; title: string; body?: string; link?: string | null;
 }
 
-/** Fan a studio notification out to Slack + WhatsApp (best-effort) when configured. */
+/** Send one WhatsApp message via CallMeBot (free). Best-effort. */
+async function sendWhatsApp(phone: string, apikey: string, text: string): Promise<void> {
+  const p = (phone || "").replace(/[^\d+]/g, "");
+  if (!p || !apikey) return;
+  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(p)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apikey)}`;
+  await fetch(url).catch(() => {});
+}
+
+/** Fan a studio notification out to Slack + the studio WhatsApp (best-effort). */
 async function fanoutStudioNotification(title: string, body?: string): Promise<void> {
   try {
     const { data } = await admin.from("app_settings").select("key, value")
       .in("key", ["slackWebhookUrl", "whatsappPhone", "whatsappApiKey"]);
     const m = new Map((data ?? []).map((r) => [r.key as string, r.value as string]));
     const text = `${title}${body ? `\n${body}` : ""}`;
-
     const slack = m.get("slackWebhookUrl") || process.env.SLACK_WEBHOOK_URL || "";
     if (slack) {
       await fetch(slack, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: `*${title}*${body ? `\n${body}` : ""}` }) }).catch(() => {});
     }
-
-    // WhatsApp via CallMeBot (free): needs the phone that authorised the bot + its apikey.
-    const phone = (m.get("whatsappPhone") || process.env.WHATSAPP_PHONE || "").replace(/[^\d+]/g, "");
-    const apikey = m.get("whatsappApiKey") || process.env.WHATSAPP_APIKEY || "";
-    if (phone && apikey) {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apikey)}`;
-      await fetch(url).catch(() => {});
-    }
+    await sendWhatsApp(m.get("whatsappPhone") || process.env.WHATSAPP_PHONE || "",
+      m.get("whatsappApiKey") || process.env.WHATSAPP_APIKEY || "", text);
   } catch (e) { console.warn("[fanout] failed:", (e as Error).message); }
+}
+
+/** Post a client notification into that client's WhatsApp group (best-effort). */
+async function fanoutClientNotification(clientId: string, title: string, body?: string): Promise<void> {
+  try {
+    const { data } = await admin.from("clients").select("whatsapp_phone, whatsapp_apikey").eq("id", clientId).single();
+    const row = data as { whatsapp_phone?: string; whatsapp_apikey?: string } | null;
+    if (row?.whatsapp_phone && row?.whatsapp_apikey) {
+      await sendWhatsApp(row.whatsapp_phone, row.whatsapp_apikey, `${title}${body ? `\n${body}` : ""}`);
+    }
+  } catch (e) { console.warn("[client-fanout] failed:", (e as Error).message); }
 }
 
 /** Create an in-app notification. Best-effort — never throws into the caller. */
@@ -435,6 +451,7 @@ export async function notify(input: NotificationInput): Promise<void> {
     });
   } catch (e) { console.warn("[notify] failed:", (e as Error).message); }
   if (input.audience === "studio") await fanoutStudioNotification(input.title, input.body);
+  else if (input.audience === "client" && input.clientId) await fanoutClientNotification(input.clientId, input.title, input.body);
 }
 
 function mapNotification(r: Record<string, unknown>): NotificationRecord {

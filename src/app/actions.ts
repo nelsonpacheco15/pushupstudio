@@ -373,6 +373,15 @@ export async function removeBrandAsset(assetId: string, clientId: string): Promi
   revalidatePath(`/client/${clientId}/manage`);
 }
 
+/** Save a client's WhatsApp group (CallMeBot) so their notifications post there. */
+export async function saveClientWhatsApp(clientId: string, formData: FormData): Promise<void> {
+  await requireStudio();
+  const phone = String(formData.get("whatsappPhone") || "").trim();
+  const apikey = String(formData.get("whatsappApiKey") || "").trim();
+  await admin.from("clients").update({ whatsapp_phone: phone, whatsapp_apikey: apikey }).eq("id", clientId);
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
 /** Pause or resume a client's subscription (paused = skipped by recurring billing). */
 export async function setClientStatus(clientId: string, status: "active" | "paused"): Promise<void> {
   await requireStudio();

@@ -8,7 +8,7 @@ import { formatEUR, planFor } from "@/lib/billing";
 import {
   updateClient, deleteClient, addClientContact, removeClientContact,
   setOnboardingStep, issueInvoiceForClient, markInvoicePaid, setClientStatus,
-  saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword,
+  saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword, saveClientWhatsApp,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
 import { DS, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
@@ -219,6 +219,30 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
             </form>
             <div style={{ fontSize: 11, color: DS.faint, marginTop: 6 }}>Logos, fonts, PDFs, images — up to 25MB each.</div>
           </div>
+        </Section>
+
+        {/* WHATSAPP GROUP */}
+        <Section title="WHATSAPP GROUP">
+          <form action={saveClientWhatsApp.bind(null, id)}>
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Group phone / ID</label>
+                <input name="whatsappPhone" defaultValue={client.whatsappPhone} placeholder="CallMeBot group ID" style={dsInput} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Group API key</label>
+                <input name="whatsappApiKey" defaultValue={client.whatsappApiKey} placeholder="From CallMeBot" style={dsInput} />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: DS.faint, marginTop: 8, lineHeight: 1.6 }}>
+              This client’s updates (ready for review, new version, completed, invoice) post into their WhatsApp group.
+              Add the CallMeBot bot to the client’s group and follow its group activation to get the group’s ID + API key, then paste them here.
+              {client.whatsappPhone && client.whatsappApiKey
+                ? <span style={{ color: "#7FB77E" }}> ● Connected.</span>
+                : <span style={{ color: DS.faint }}> ○ Not connected — notifications stay in-app + email only.</span>}
+            </div>
+            <div style={{ marginTop: 14 }}><button type="submit" style={dsBtn}>Save WhatsApp group</button></div>
+          </form>
         </Section>
 
         {/* CONTACTS */}

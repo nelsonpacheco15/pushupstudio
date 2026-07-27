@@ -118,6 +118,9 @@ alter table public.notifications enable row level security;
 
 -- subscription status (pause billing without deleting the account)
 alter table public.clients add column if not exists status text not null default 'active';
+-- per-client WhatsApp group (CallMeBot): notifications for this client post here
+alter table public.clients add column if not exists whatsapp_phone text default '';
+alter table public.clients add column if not exists whatsapp_apikey text default '';
 
 -- brand hub: extra brand info on the client + a per-client asset library
 alter table public.clients add column if not exists brand_palette jsonb not null default '[]'::jsonb;
