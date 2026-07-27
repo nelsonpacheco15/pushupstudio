@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours, getSettings } from "@/lib/data";
+import { listClients, getTimeStats, getRunningTimer, getUpNext, getWeeklyHours, getSettings, getArchivedClients } from "@/lib/data";
 import StudioNav from "@/components/StudioNav";
 import ClientsSection from "@/components/ClientsSection";
 import WeekHoursChart from "@/components/WeekHoursChart";
@@ -15,8 +15,8 @@ const PRI = ["Normal", "High", "Urgent"];
 const priColor = (p: number) => (p >= 2 ? DS.accent : p === 1 ? DS.amber : DS.mute);
 
 export default async function Overview() {
-  const [clients, stats, running, upNext, week, settings] = await Promise.all([
-    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(), getSettings(),
+  const [clients, stats, running, upNext, week, settings, archived] = await Promise.all([
+    listClients(), getTimeStats(), getRunningTimer(), getUpNext(), getWeeklyHours(), getSettings(), getArchivedClients(),
   ]);
   const nowMs = Date.now();
   const slaHours = settings.slaHours;
@@ -110,7 +110,7 @@ export default async function Overview() {
           <WeekHoursChart days={week} />
         </div>
 
-        <ClientsSection clients={clients} nowMs={nowMs} />
+        <ClientsSection clients={clients} nowMs={nowMs} archived={archived} />
       </main>
     </div>
   );

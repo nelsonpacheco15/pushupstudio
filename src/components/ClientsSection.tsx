@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { ClientSummary } from "@/lib/data";
-import { createClient, deleteClient, setClientStatus, resendSetupInvite } from "@/app/actions";
+import type { ClientSummary, ArchivedClient } from "@/lib/data";
+import { createClient, deleteClient, setClientStatus, setClientArchived, resendSetupInvite } from "@/app/actions";
 import { formatDuration, formatAgo } from "@/lib/tickets";
 import { DS, dsCard, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
 
 type Period = "week" | "month";
 const WAIT_LIMIT_MS = 45 * 3600 * 1000;
 
-export default function ClientsSection({ clients, nowMs }: { clients: ClientSummary[]; nowMs: number }) {
+export default function ClientsSection({ clients, nowMs, archived = [] }: { clients: ClientSummary[]; nowMs: number; archived?: ArchivedClient[] }) {
   const [period, setPeriod] = useState<Period>("week");
   const [newOpen, setNewOpen] = useState(false);
 
@@ -97,6 +97,30 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
         </div>
       )}
 
+      {archived.length > 0 && (
+        <details style={{ marginTop: 26 }}>
+          <summary style={{ cursor: "pointer", fontFamily: DS.mono, fontSize: 11.5, letterSpacing: 0.5, color: DS.mute, listStyle: "none" }}>
+            ▸ Archived athletes ({archived.length})
+          </summary>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            {archived.map((a) => (
+              <div key={a.id} style={{ ...dsCard, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", opacity: 0.8 }}>
+                <span style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 15 }}>{a.name}</span>
+                {a.company && <span style={{ fontSize: 12.5, color: DS.mute }}>{a.company}</span>}
+                <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                  <form action={setClientArchived.bind(null, a.id, false)}>
+                    <button type="submit" style={{ ...dsBtnGhost, padding: "6px 12px", fontSize: 12 }}>Restore</button>
+                  </form>
+                  <form action={deleteClient.bind(null, a.id)} onSubmit={(e) => { if (!confirm(`Delete ${a.name} and all their data? This cannot be undone.`)) e.preventDefault(); }}>
+                    <button type="submit" style={{ background: "transparent", color: "#D2452B", border: "1px solid #D2452B", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: DS.body }}>Delete</button>
+                  </form>
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
       {newOpen && <NewClientModal onClose={() => setNewOpen(false)} />}
     </div>
   );
@@ -125,6 +149,9 @@ function CardMenu({ c }: { c: ClientSummary }) {
             <div style={{ height: 1, background: DS.border }} />
             <form action={setClientStatus.bind(null, c.id, paused ? "active" : "paused")}>
               <button type="submit" style={item}>{paused ? "Resume billing" : "Pause billing"}</button>
+            </form>
+            <form action={setClientArchived.bind(null, c.id, true)}>
+              <button type="submit" style={item}>Archive client</button>
             </form>
             <form action={deleteClient.bind(null, c.id)} onSubmit={(e) => { if (!confirm(`Delete ${c.name} and all their data? This cannot be undone.`)) e.preventDefault(); }}>
               <button type="submit" style={{ ...item, color: "#D2452B" }}>Delete client</button>

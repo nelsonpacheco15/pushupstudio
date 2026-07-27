@@ -425,6 +425,14 @@ export async function saveClientWhatsApp(clientId: string, formData: FormData): 
   revalidatePath(`/client/${clientId}/manage`);
 }
 
+/** Archive a client (hidden from active views, kept for records) or restore it. */
+export async function setClientArchived(clientId: string, archived: boolean): Promise<void> {
+  await requireStudio();
+  await admin.from("clients").update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", clientId);
+  revalidatePath("/");
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
 /** Pause or resume a client's subscription (paused = skipped by recurring billing). */
 export async function setClientStatus(clientId: string, status: "active" | "paused"): Promise<void> {
   await requireStudio();

@@ -132,6 +132,8 @@ alter table public.notifications enable row level security;
 alter table public.clients add column if not exists status text not null default 'active';
 -- the client's Google Drive folder (where deliverables live)
 alter table public.clients add column if not exists drive_folder_url text default '';
+-- archive a client (hidden from active views, kept for records)
+alter table public.clients add column if not exists archived_at timestamptz;
 -- per-client WhatsApp group (CallMeBot): notifications for this client post here
 alter table public.clients add column if not exists whatsapp_phone text default '';
 alter table public.clients add column if not exists whatsapp_apikey text default '';

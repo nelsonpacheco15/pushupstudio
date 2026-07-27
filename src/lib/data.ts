@@ -164,6 +164,7 @@ export async function listClients(): Promise<ClientSummary[]> {
   const { data: rows } = await admin
     .from("clients")
     .select("*")
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
   if (!rows) return [];
 
@@ -327,9 +328,16 @@ export async function setInvoiceStatus(id: string, status: string): Promise<void
 export interface SearchItem { type: "client" | "rep"; id: string; label: string; sub: string; href: string; }
 
 /** Lightweight index of clients + reps for the ⌘P command palette. */
+export interface ArchivedClient { id: string; name: string; company: string; plan: string; archivedAt: string; }
+export async function getArchivedClients(): Promise<ArchivedClient[]> {
+  const { data } = await admin.from("clients").select("id, name, company, plan, archived_at")
+    .not("archived_at", "is", null).order("archived_at", { ascending: false });
+  return (data ?? []).map((c) => ({ id: c.id, name: c.name, company: c.company ?? "", plan: c.plan ?? "growth", archivedAt: c.archived_at }));
+}
+
 export async function getSearchIndex(): Promise<SearchItem[]> {
   const [cRes, tRes] = await Promise.all([
-    admin.from("clients").select("id, name, company"),
+    admin.from("clients").select("id, name, company").is("archived_at", null),
     admin.from("tickets").select("id, title, status, client_id"),
   ]);
   const names = new Map((cRes.data ?? []).map((c) => [c.id as string, c.name as string]));
@@ -420,7 +428,7 @@ export interface BillingClient {
   plan: string; paymentMethod: string; status: string; createdAt: string | null;
 }
 export async function listClientsForBilling(): Promise<BillingClient[]> {
-  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, status, created_at");
+  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, status, created_at").is("archived_at", null);
   return (data ?? []).map((c) => ({
     id: c.id as string, name: c.name as string, email: (c.email as string) ?? "",
     language: (c.language === "pt" ? "pt" : "en") as Lang, portalToken: c.portal_token as string,
