@@ -334,6 +334,46 @@ export async function getTicketFeedback(ticketId: string): Promise<TicketFeedbac
   }));
 }
 
+/* --------------------------------------------------------- Design versions */
+
+export interface TicketVersion {
+  id: string; version: number; url: string; status: "pending" | "accepted" | "changes"; createdAt: string;
+}
+
+export async function listTicketVersions(ticketId: string): Promise<TicketVersion[]> {
+  const { data } = await admin
+    .from("ticket_versions")
+    .select("id, version, url, status, created_at")
+    .eq("ticket_id", ticketId)
+    .order("version", { ascending: true });
+  return (data ?? []).map((v) => ({ id: v.id, version: v.version, url: v.url, status: v.status, createdAt: v.created_at }));
+}
+
+/** The version the client should see as the main design: accepted one, else latest. */
+export function currentVersion(versions: TicketVersion[]): TicketVersion | null {
+  if (versions.length === 0) return null;
+  return versions.find((v) => v.status === "accepted") ?? versions[versions.length - 1];
+}
+
+/** Add the next design version to a ticket. Returns it (or null on failure). */
+export async function addTicketVersion(ticketId: string, url: string): Promise<TicketVersion | null> {
+  const existing = await listTicketVersions(ticketId);
+  const version = (existing[existing.length - 1]?.version ?? 0) + 1;
+  const { data, error } = await admin.from("ticket_versions")
+    .insert({ ticket_id: ticketId, version, url: url.trim(), status: "pending" })
+    .select("id, version, url, status, created_at").single();
+  if (error || !data) { console.warn("[versions] add failed:", error?.message); return null; }
+  return { id: data.id, version: data.version, url: data.url, status: data.status, createdAt: data.created_at };
+}
+
+/** Mark the latest pending version accepted / changes (called on client feedback). */
+export async function decideLatestVersion(ticketId: string, decision: "approved" | "changes"): Promise<void> {
+  const versions = await listTicketVersions(ticketId);
+  const target = [...versions].reverse().find((v) => v.status === "pending") ?? versions[versions.length - 1];
+  if (!target) return;
+  await admin.from("ticket_versions").update({ status: decision === "approved" ? "accepted" : "changes" }).eq("id", target.id);
+}
+
 /** Load a ticket only if it belongs to the client identified by the portal token. */
 export async function getPortalTicket(token: string, ticketId: string): Promise<Ticket | null> {
   const client = await getClientByPortalToken(token);

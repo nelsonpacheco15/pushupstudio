@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import {
   getTicket, getClientById, getTicketTimeEntries, getTicketTotalSeconds,
   getRunningTimer, getStylescapeForTicket, listUnattachedStylescapes, getTicketFeedback,
+  listTicketVersions, currentVersion,
 } from "@/lib/data";
 import { STATUS_LABELS, STATUS_DOT, formatDuration, driveEmbed } from "@/lib/tickets";
 import { TimerButton } from "@/components/LiveTimer";
 import TicketActions from "@/components/TicketActions";
-import DeliverableEditor from "@/components/DeliverableEditor";
+import VersionManager from "@/components/VersionManager";
 import { createStylescapeForTicket, attachStylescapeToTicket } from "@/app/actions";
 import { INK, PANEL, LINE, ACCENT, MUTE, PAPER, ghostBtn } from "@/lib/theme";
 
@@ -20,7 +21,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const ticket = await getTicket(id);
   if (!ticket) notFound();
   const isStylescapeTicket = ticket.form.type === STYLESCAPE_TYPE;
-  const [client, entries, total, running, stylescape, unattached, feedback] = await Promise.all([
+  const [client, entries, total, running, stylescape, unattached, feedback, versions] = await Promise.all([
     getClientById(ticket.clientId),
     getTicketTimeEntries(id),
     getTicketTotalSeconds(id),
@@ -28,8 +29,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     getStylescapeForTicket(id),
     isStylescapeTicket ? listUnattachedStylescapes(ticket.clientId) : Promise.resolve([]),
     getTicketFeedback(id),
+    listTicketVersions(id),
   ]);
-  const embed = driveEmbed(ticket.deliverableUrl);
+  const shown = currentVersion(versions);
+  const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
   const isRunning = running?.ticketId === id;
   const completedTotal = entries.reduce((s, e) => s + (e.durationSeconds ?? 0), 0);
 
@@ -116,14 +119,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
         {/* deliverable — the design the client reviews */}
         <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
-          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE, marginBottom: 12 }}>DELIVERABLE · GOOGLE DRIVE</div>
-          <DeliverableEditor ticketId={id} url={ticket.deliverableUrl} />
+          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: MUTE, marginBottom: 12 }}>
+            DESIGN VERSIONS · GOOGLE DRIVE{shown ? ` · showing v${shown.version}` : ""}
+          </div>
+          <VersionManager ticketId={id} versions={versions} />
           {embed && (
             <iframe src={embed} title="Design preview"
               style={{ width: "100%", height: 420, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 14, background: "#000" }} />
           )}
           <div style={{ fontSize: 12, color: MUTE, marginTop: 10 }}>
-            The client sees this in their portal and can rate + approve / request changes. The Drive link must be shared “Anyone with the link · Viewer”.
+            Each change request adds a new version. The client sees the latest (or the one they accepted) and can rate + approve / request changes. Drive links must be shared “Anyone with the link · Viewer”.
           </div>
         </div>
 

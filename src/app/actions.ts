@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
-  createInvoice, getInvoice, setInvoiceStatus } from "@/lib/data";
+  createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion } from "@/lib/data";
 import { planFor } from "@/lib/billing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
@@ -446,12 +446,39 @@ export async function deleteTicket(ticketId: string, clientId: string): Promise<
   redirect(`/client/${clientId}`);
 }
 
-/** Studio: attach / update the Google Drive design link on a ticket. */
+/** Studio: attach / update the Google Drive design link on a ticket (no new version). */
 export async function setDeliverableUrl(ticketId: string, url: string): Promise<void> {
   await requireStudio();
   const { error } = await admin.from("tickets").update({ deliverable_url: url.trim() || null }).eq("id", ticketId);
   if (error) throw new Error(error.message);
   revalidatePath(`/ticket/${ticketId}`);
+}
+
+/** Studio: add a new design version link (used for the initial design and each
+    revision after a change request). Mirrors it onto the ticket's deliverable_url
+    for display/emails and moves the ticket to Needs Review. */
+export async function addDeliverableVersion(ticketId: string, url: string): Promise<void> {
+  await requireStudio();
+  const clean = url.trim();
+  if (!clean) return;
+  const version = await addTicketVersion(ticketId, clean);
+  const { data: t } = await admin.from("tickets").select("client_id, status, title").eq("id", ticketId).single();
+  await admin.from("tickets").update({ deliverable_url: clean, status: "review", updated_at: new Date().toISOString() }).eq("id", ticketId);
+
+  // Notify the client a (new) design is ready to review.
+  const row = t as { client_id: string; status: string; title: string } | null;
+  if (row) {
+    const client = await getClientById(row.client_id);
+    if (client) {
+      await mail.emailReadyForReview(
+        { name: client.name, email: client.email, portalToken: client.portalToken, language: client.language },
+        row.title || "your request",
+      );
+    }
+    revalidatePath(`/client/${row.client_id}`);
+  }
+  revalidatePath(`/ticket/${ticketId}`);
+  if (version) revalidatePath("/");
 }
 
 /** Client: evaluate the delivered design from the portal. */
@@ -468,6 +495,9 @@ export async function submitTicketFeedback(
     ticket_id: ticketId, score: clampedScore, note: note || "", decision,
   });
   if (error) throw new Error(error.message);
+
+  // Record the client's decision on the current design version.
+  await decideLatestVersion(ticketId, decision);
 
   // Approve → Done. Request changes → In Progress (falls back to Ready if the
   // client already has a ticket in progress, to respect the WIP rule).

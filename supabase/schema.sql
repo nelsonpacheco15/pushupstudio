@@ -84,6 +84,20 @@ alter table public.tickets add column if not exists deliverable_url text;
 create index if not exists tickets_client_idx on public.tickets(client_id);
 create index if not exists tickets_status_idx on public.tickets(status);
 
+-- Design versions on a ticket. Each change request adds a new link; the accepted
+-- one (else the latest) is what the client sees as the main design.
+create table if not exists public.ticket_versions (
+  id         uuid primary key default gen_random_uuid(),
+  ticket_id  uuid not null references public.tickets(id) on delete cascade,
+  version    int not null default 1,
+  url        text not null,
+  status     text not null default 'pending'
+             check (status in ('pending','accepted','changes')),
+  created_at timestamptz not null default now()
+);
+create index if not exists ticket_versions_ticket_idx on public.ticket_versions(ticket_id);
+alter table public.ticket_versions enable row level security;
+
 -- Client evaluation of a delivered design, on a ticket.
 create table if not exists public.ticket_feedback (
   id         uuid primary key default gen_random_uuid(),

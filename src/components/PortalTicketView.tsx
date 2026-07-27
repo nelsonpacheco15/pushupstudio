@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { STATUS_LABELS, driveEmbed, type Ticket } from "@/lib/tickets";
-import type { ClientRecord, TicketFeedback } from "@/lib/data";
+import type { ClientRecord, TicketFeedback, TicketVersion } from "@/lib/data";
 import TicketEvaluation from "@/components/TicketEvaluation";
 import { DS } from "@/lib/theme";
 
@@ -16,11 +16,13 @@ const T = {
 };
 
 export default function PortalTicketView({
-  client, ticket, feedback, backHref, backLabel,
+  client, ticket, feedback, backHref, backLabel, versions = [], shown,
 }: {
   client: ClientRecord; ticket: Ticket; feedback: TicketFeedback[]; backHref: string; backLabel: string;
+  versions?: TicketVersion[]; shown?: TicketVersion | null;
 }) {
-  const embed = driveEmbed(ticket.deliverableUrl);
+  const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
+  const accepted = shown?.status === "accepted";
   const t = T[client.language];
 
   return (
@@ -45,13 +47,25 @@ export default function PortalTicketView({
           </div>
         )}
 
-        <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, margin: "6px 0 10px" }}>[ {t.design} ]</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 10px" }}>
+          <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint }}>[ {t.design}{shown ? ` · V${shown.version}` : ""} ]</div>
+          {accepted && <span style={{ fontFamily: DS.mono, fontSize: 10, color: "#7FB77E" }}>✓ {client.language === "pt" ? "ACEITE" : "ACCEPTED"}</span>}
+          {versions.length > 1 && (
+            <span style={{ fontFamily: DS.mono, fontSize: 10, color: DS.faint }}>
+              {client.language === "pt" ? `${versions.length} versões` : `${versions.length} versions`}
+            </span>
+          )}
+        </div>
         {embed ? (
           <>
             <iframe src={embed} title="Design"
               style={{ width: "100%", height: 520, border: `1px solid ${DS.border}`, borderRadius: 4, background: "#000", marginBottom: 20 }} />
-            {feedback.length > 0 ? (
-              <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18 }}>
+            {/* Evaluate when the current version is still awaiting a decision. */}
+            {(shown ? shown.status === "pending" : feedback.length === 0) && (
+              <TicketEvaluation token={client.portalToken} ticketId={ticket.id} lang={client.language} />
+            )}
+            {feedback.length > 0 && (
+              <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginTop: 20 }}>
                 <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 4 }}>[ {t.reviewed.toUpperCase()} ]</div>
                 {feedback.map((f) => (
                   <div key={f.id} style={{ borderTop: `1px solid ${DS.border}`, padding: "10px 0", display: "flex", alignItems: "center", gap: 12 }}>
@@ -61,8 +75,6 @@ export default function PortalTicketView({
                   </div>
                 ))}
               </div>
-            ) : (
-              <TicketEvaluation token={client.portalToken} ticketId={ticket.id} lang={client.language} />
             )}
           </>
         ) : (
