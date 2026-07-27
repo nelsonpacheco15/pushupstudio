@@ -54,7 +54,9 @@ function shell(inner: string, footerNote: string): string {
 const heading = (t: string) => `<div style="font-family:${MONO};font-weight:bold;font-size:23px;letter-spacing:1px;color:${TXT};margin:0 0 14px;text-transform:uppercase;">${t}</div>`;
 const para = (t: string) => `<div style="font-family:${SANS};font-size:15px;line-height:1.65;color:#CFCCC2;margin:0 0 14px;">${t}</div>`;
 const button = (label: string, url: string) => `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 2px;"><tr><td style="background:${HL};border-radius:4px;"><a href="${url}" style="display:inline-block;padding:12px 22px;font-family:${SANS};font-size:14px;font-weight:bold;color:${BG};text-decoration:none;">${label}</a></td></tr></table>`;
-const bold = (t: string) => `<b style="color:${TXT};">${t}</b>`;
+/** Escape user-controlled text before putting it in email HTML. */
+const esc = (t: string) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const bold = (t: string) => `<b style="color:${TXT};">${esc(t)}</b>`;
 
 /* ---- onboarding progress (welcome email) ---- */
 const STEP_LABELS: Record<Lang, string[]> = {
@@ -164,7 +166,7 @@ export async function emailNewVersion(c: ClientLite, ticketTitle: string, versio
       yourReq: "O teu pedido", cta: "Rever a nova versão" },
   }[L];
   const noteBlock = changeNote
-    ? para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${t.yourReq} ]</span><br/><span style="border-left:2px solid ${LINE};padding-left:12px;display:inline-block;color:#CFCCC2;">${changeNote}</span>`)
+    ? para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${t.yourReq} ]</span><br/><span style="border-left:2px solid ${LINE};padding-left:12px;display:inline-block;color:#CFCCC2;">${esc(changeNote)}</span>`)
     : "";
   await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + noteBlock + button(t.cta, portalUrl(c.portalToken)), footer[L]));
 }
@@ -192,7 +194,7 @@ export async function emailMonthlyRecap(c: ClientLite, monthLabel: string, items
         p: `Hi ${c.name}, here's everything we made for you in ${bold(monthLabel)} — ${bold(String(items.length))} ${items.length === 1 ? "delivery" : "deliveries"}. Thanks for keeping the reps coming! 💪`,
         cta: "Open your Locker Room" };
   const list = items.map((title) =>
-    `<tr><td style="padding:8px 0;border-bottom:1px solid ${LINE};font-family:${SANS};font-size:14px;color:${TXT};">✓ ${title}</td></tr>`).join("");
+    `<tr><td style="padding:8px 0;border-bottom:1px solid ${LINE};font-family:${SANS};font-size:14px;color:${TXT};">✓ ${esc(title)}</td></tr>`).join("");
   const body = heading(t.h) + para(t.p) +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 12px;">${list}</table>` +
     button(t.cta, portalUrl(c.portalToken));
@@ -214,7 +216,7 @@ export async function emailStudioNewRequest(clientName: string, ticketTitle: str
   if (!STUDIO_EMAIL) return;
   await send(STUDIO_EMAIL, `New request from ${clientName}`,
     shell(heading("New request") + para(`${bold(clientName)} just submitted a new request:`) +
-      para(`<span style="font-family:${MONO};font-size:15px;color:${TXT};border-left:2px solid ${HL};padding-left:12px;display:inline-block;">${ticketTitle}</span>`) +
+      para(`<span style="font-family:${MONO};font-size:15px;color:${TXT};border-left:2px solid ${HL};padding-left:12px;display:inline-block;">${esc(ticketTitle)}</span>`) +
       button("Open studio", `${APP_URL}/`), footer.en));
 }
 

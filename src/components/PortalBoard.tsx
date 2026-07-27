@@ -2,7 +2,7 @@ import Link from "next/link";
 import { clientLogout, startClientCheckout, reorderBacklogTicket, clientChangePlan, clientTogglePause, type NotifFeed } from "@/app/actions";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus, type Ticket } from "@/lib/tickets";
 import type { ClientRecord } from "@/lib/data";
-import RequestPanel from "@/components/RequestPanel";
+import NewRequestButton from "@/components/NewRequestButton";
 import NotificationBell from "@/components/NotificationBell";
 import { INK, PANEL, LINE, MUTE, PAPER } from "@/lib/theme";
 
@@ -43,6 +43,7 @@ export default function PortalBoard({
           <div style={{ fontSize: 12.5, color: MUTE }}>Your reps and how they’re progressing · {open} open</div>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <NewRequestButton clientId={client.id} portalToken={client.portalToken} brandColor={client.brandColor} />
           {notifications && <NotificationBell scope="client" initial={notifications} tone="light" />}
           {showLogout && (
             <form action={clientLogout}>
@@ -75,10 +76,9 @@ export default function PortalBoard({
         </div>
       )}
 
-      <div style={{ padding: 26, maxWidth: 1200, margin: "0 auto", display: "grid", gap: 26,
-        gridTemplateColumns: "minmax(0, 1fr) 360px" }}>
-        {/* board */}
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
+      <div style={{ padding: 26, maxWidth: 1440, margin: "0 auto" }}>
+        {/* board — full width, the main focus */}
+        <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
           {STATUSES.map((status: TicketStatus) => {
             const col = tickets.filter((t) => t.status === status);
             if (status === "backlog") col.sort((a, b) => a.position - b.position);
@@ -125,11 +125,9 @@ export default function PortalBoard({
           })}
         </div>
 
-        {/* request form + account */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <RequestPanel clientId={client.id} portalToken={client.portalToken} />
-
-          {selfService && (
+        {/* account panel — below the board, no longer covering it */}
+        {selfService && (
+          <div style={{ marginTop: 24, maxWidth: 560 }}>
             <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 18 }}>
               <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: 1, color: MUTE, marginBottom: 12 }}>[ YOUR PLAN ]</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -170,8 +168,8 @@ export default function PortalBoard({
                 </>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -40,19 +40,24 @@ export async function verifyClientCookie(value: string | undefined): Promise<str
   return sig === expected ? id : null;
 }
 
-/** Signed "set your password" token for an invite link: `<kind>~<id>~<sig>`. */
+const SETUP_TTL_SEC = 14 * 24 * 3600; // invite links valid for 14 days
+
+/** Signed, EXPIRING "set your password" token: `<kind>~<id>~<exp>~<sig>`. */
 export async function signSetupToken(kind: "client" | "contact", id: string): Promise<string> {
-  const sig = await sha256(`${kind}:${id}:${secret()}`);
-  return `${kind}~${id}~${sig}`;
+  const exp = Math.floor(Date.now() / 1000) + SETUP_TTL_SEC;
+  const sig = await sha256(`${kind}:${id}:${exp}:${secret()}`);
+  return `${kind}~${id}~${exp}~${sig}`;
 }
 
-/** Verify a setup token from an invite link. Returns {kind, id} or null. */
+/** Verify a setup token from an invite link. Returns {kind, id} or null (invalid/expired). */
 export async function verifySetupToken(token: string): Promise<{ kind: "client" | "contact"; id: string } | null> {
   const parts = (token || "").split("~");
-  if (parts.length !== 3) return null;
-  const [kind, id, sig] = parts;
+  if (parts.length !== 4) return null;
+  const [kind, id, expStr, sig] = parts;
   if (kind !== "client" && kind !== "contact") return null;
-  const expected = await sha256(`${kind}:${id}:${secret()}`);
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return null; // expired
+  const expected = await sha256(`${kind}:${id}:${exp}:${secret()}`);
   return sig === expected ? { kind, id } : null;
 }
 

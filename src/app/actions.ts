@@ -64,7 +64,9 @@ export async function login(formData: FormData): Promise<void> {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
-  redirect(next.startsWith("/") ? next : "/");
+  // Same-origin paths only — reject protocol-relative (`//evil.com`) and backslash tricks.
+  const safeNext = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+  redirect(safeNext);
 }
 
 export async function logout(): Promise<void> {
@@ -97,6 +99,7 @@ export async function clientLogout(): Promise<void> {
 
 /** Client self-service: switch own plan (if enabled in settings). Notifies studio. */
 export async function clientChangePlan(plan: "growth" | "scale"): Promise<void> {
+  if (plan !== "growth" && plan !== "scale") return; // reject arbitrary plan strings
   const clientId = await getClientSession();
   if (!clientId) redirect("/enter");
   const settings = await getSettings();
@@ -607,8 +610,10 @@ export async function createTicket(formData: FormData): Promise<void> {
   // Client-attached photos/files → uploaded to storage + shown to the designer.
   if (created?.id) {
     const files = formData.getAll("attachments").filter((f): f is File => f instanceof File && f.size > 0);
+    const ALLOWED = [...ALLOWED_IMAGE_TYPES, "application/pdf"];
     for (const file of files.slice(0, 10)) {
       if (file.size > 15 * 1024 * 1024) continue; // 15MB cap each
+      if (!ALLOWED.includes(file.type)) continue; // only images + PDF (no active content)
       const safe = (file.name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `request-attachments/${clientId}/${created.id}/${Date.now()}-${safe}`;
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -937,39 +942,21 @@ async function groqChatJSON<T>(prompt: string, maxTokens = 1200): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-/* The brief the DESIGN TEAM sees — the studio's standard 12-section structure.
-   The client never sees this or the raw transcript. */
-const BRIEF_STRUCTURE = `1) Enquadramento — o que é a marca/produto/pedido e porque existe
-2) Problema a resolver
-3) Objetivos — objetivo principal + objetivos secundários
-4) Público e perceção pretendida — públicos-alvo + atributos/perceção desejada
-5) Proposta conceptual — ideia-chave / ponto de partida criativo
-6) Âmbito do projeto — entregáveis organizados por fases
-7) Fora do âmbito
-8) Requisitos e restrições
-9) Critérios de sucesso
-10) Processo proposto — checkpoints
-11) Inputs necessários do cliente
-12) Entregáveis finais`;
-
-const briefPrompt = (transcript: string) => `You are a senior brand strategist at a design studio, writing a creative brief FOR THE DESIGN TEAM based on what a client described out loud.
-Client transcript:
+/* Smart analysis of a spoken request: clean up the transcript (keep the client's
+   own words + language) and infer the metadata so the client can review/edit. */
+const analyzePrompt = (transcript: string) => `A client at a design studio described a request out loud. Raw transcript:
 """${transcript}"""
-Write a complete, professional brief that follows EXACTLY this section structure:
-${BRIEF_STRUCTURE}
-Rules:
-- Write in the SAME LANGUAGE the client spoke (translate the section titles into that language too).
-- Base it on what the client said, expanded with reasonable professional inference appropriate to the request.
-- Keep it proportional: a small request stays concise; a full brand project is more detailed.
-- Where the client did not specify something, either make a sensible professional assumption or write "A confirmar com o cliente." NEVER write questions addressed to the reader.
-- Be concrete and actionable. Do not contradict the client.
-Return ONLY JSON: {"title": "3-6 word project title", "type": "best match from [${REQUEST_TYPES.join(", ")}]", "priority": 0 for normal / 1 for high / 2 for urgent — infer from the client's tone and deadline, "deadline": "date/timeframe if the client mentioned one, else empty string", "references": "any references the client mentioned, else empty string", "brief": "the full brief as text, all 12 numbered sections, blank line between sections"}`;
+Do two things:
+1. Clean up the transcript: fix punctuation and obvious speech-to-text errors, remove filler words (um, uh, like), but KEEP the client's own words, meaning, first-person voice, and the SAME LANGUAGE they spoke. Do not turn it into a formal brief.
+2. Infer the request metadata.
+Return ONLY JSON: {"transcript": "the cleaned-up version of what the client said", "title": "a 3-6 word title in the client's language", "type": "the single best match from this exact list: [${REQUEST_TYPES.join(", ")}]", "priority": 0, "deadline": "a date or timeframe if the client mentioned one, else empty string", "references": "any links/brands/examples the client mentioned, else empty string"}
+For priority use 0 for normal, 1 for high, 2 for urgent — infer from the client's tone and any deadline.`;
 
-interface BriefResult { title: string; type: string; priority: number; deadline: string; references: string; brief: string; }
+export interface VoiceAnalysis { transcript: string; title: string; type: string; priority: number; deadline: string; references: string; }
 
-/** Client voice flow: upload audio → transcribe → write the brief → create the
-    ticket, all server-side. The client never sees the transcript or the brief. */
-export async function submitVoiceRequest(formData: FormData): Promise<void> {
+/** Step 1 of the client voice flow: transcribe + analyze. Returns the editable
+    transcript + suggested fields (does NOT create the ticket). */
+export async function transcribeVoiceRequest(formData: FormData): Promise<VoiceAnalysis> {
   const portalToken = String(formData.get("portalToken") || "");
   const audio = formData.get("audio");
   if (!(audio instanceof File)) throw new Error("No audio recording received.");
@@ -979,23 +966,43 @@ export async function submitVoiceRequest(formData: FormData): Promise<void> {
 
   const transcript = await groqTranscribe(audio);
   if (!transcript) throw new Error("Could not hear anything in that recording. Try again.");
-  const draft = await groqChatJSON<BriefResult>(briefPrompt(transcript), 3000);
+  const a = await groqChatJSON<VoiceAnalysis>(analyzePrompt(transcript), 1500);
+  const type = REQUEST_TYPES.includes(a.type) ? a.type : (REQUEST_TYPES.find((r) => r.toLowerCase().includes((a.type || "").toLowerCase().slice(0, 5))) || "Other");
+  return {
+    transcript: (a.transcript || transcript).trim(),
+    title: (a.title || "").trim(),
+    type,
+    priority: Math.max(0, Math.min(2, Number(a.priority) || 0)),
+    deadline: (a.deadline || "").trim(),
+    references: (a.references || "").trim(),
+  };
+}
 
-  const title = (draft.title || "Voice request").trim();
-  const priority = Math.max(0, Math.min(2, Number(draft.priority) || 0));
-  const { error } = await admin.from("tickets").insert({
-    client_id: client.id,
-    title,
-    description: draft.brief || "",
-    form: { type: draft.type || "", deadline: draft.deadline || "", references: draft.references || "" },
-    status: "backlog",
-    created_by: "client",
-    priority,
-  });
+/** Step 2 of the client voice flow: create the ticket from the client's
+    reviewed/edited transcript + fields. */
+export async function submitVoiceRequest(formData: FormData): Promise<void> {
+  const portalToken = String(formData.get("portalToken") || "");
+  if (!portalToken) throw new Error("Missing portal token.");
+  const client = await getClientByPortalToken(portalToken);
+  if (!client) throw new Error("Invalid portal link.");
+
+  const description = String(formData.get("description") || "").trim();
+  const title = String(formData.get("title") || "").trim() || "Voice request";
+  const type = String(formData.get("type") || "");
+  const priority = Math.max(0, Math.min(2, Number(formData.get("priority")) || 0));
+  const deadline = String(formData.get("deadline") || "").trim();
+  const references = String(formData.get("references") || "").trim();
+
+  const { data: created, error } = await admin.from("tickets").insert({
+    client_id: client.id, title, description,
+    form: { type, deadline, references }, status: "backlog", created_by: "client", priority,
+  }).select("id").single();
   if (error) throw new Error(error.message);
 
   await mail.emailRequestReceived({ name: client.name, email: client.email, portalToken: client.portalToken, language: client.language }, title);
   await mail.emailStudioNewRequest(client.name, title);
+  await notify({ audience: "studio", clientId: client.id, type: "new_request",
+    title: `New request from ${client.name}`, body: title, link: created ? `/ticket/${created.id}` : `/client/${client.id}` });
 
   revalidatePath(`/client/${client.id}`);
   revalidatePath(`/portal/${portalToken}`);
