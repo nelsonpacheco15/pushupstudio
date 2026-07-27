@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
    with the env values Vercel actually has. Protected by CRON_SECRET. Remove after use. */
 
 export async function GET(req: NextRequest) {
-  const key = process.env.CRON_SECRET;
+  const key = process.env.STUDIO_PASSWORD;
   if (!key || req.nextUrl.searchParams.get("key") !== key) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
