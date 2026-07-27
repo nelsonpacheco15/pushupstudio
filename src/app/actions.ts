@@ -310,6 +310,8 @@ export async function updateSettings(formData: FormData): Promise<void> {
     growthCents: toCents(s("growthEuros")), scaleCents: toCents(s("scaleEuros")),
     slaHours: String(Math.max(1, Math.round(Number(s("slaHours")) || 45))),
     autoInvoice: formData.get("autoInvoice") === "on" ? "on" : "off",
+    growthSlaHours: String(Math.max(1, Math.round(Number(s("growthSlaHours")) || 48))),
+    scaleSlaHours: String(Math.max(1, Math.round(Number(s("scaleSlaHours")) || 24))),
   });
   revalidatePath("/settings");
   revalidatePath("/billing");
@@ -367,6 +369,15 @@ export async function removeBrandAsset(assetId: string, clientId: string): Promi
   await requireStudio();
   await deleteBrandAsset(assetId);
   revalidatePath(`/client/${clientId}/manage`);
+}
+
+/** Pause or resume a client's subscription (paused = skipped by recurring billing). */
+export async function setClientStatus(clientId: string, status: "active" | "paused"): Promise<void> {
+  await requireStudio();
+  await admin.from("clients").update({ status }).eq("id", clientId);
+  revalidatePath(`/client/${clientId}/manage`);
+  revalidatePath("/billing");
+  revalidatePath("/");
 }
 
 export async function addClientContact(clientId: string, formData: FormData): Promise<void> {

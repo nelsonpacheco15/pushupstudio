@@ -60,7 +60,10 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
                     </div>
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 18, letterSpacing: -0.3 }}>{c.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 18, letterSpacing: -0.3 }}>{c.name}</div>
+                      {c.status === "paused" && <span style={{ fontFamily: DS.mono, fontSize: 9, letterSpacing: 0.5, color: DS.amber, border: `1px solid ${DS.amber}`, borderRadius: 999, padding: "1px 6px" }}>PAUSED</span>}
+                    </div>
                     {c.company && <div style={{ fontSize: 13, color: DS.mute }}>{c.company}</div>}
                   </div>
                   {overdue && <span style={{ fontFamily: DS.mono, fontSize: 10, color: DS.accent, border: `1px solid ${DS.accent}`, borderRadius: 999, padding: "2px 8px" }}>45h+</span>}

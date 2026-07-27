@@ -114,6 +114,9 @@ create index if not exists notifications_audience_idx on public.notifications(au
 create index if not exists notifications_client_idx on public.notifications(client_id, created_at desc);
 alter table public.notifications enable row level security;
 
+-- subscription status (pause billing without deleting the account)
+alter table public.clients add column if not exists status text not null default 'active';
+
 -- brand hub: extra brand info on the client + a per-client asset library
 alter table public.clients add column if not exists brand_palette jsonb not null default '[]'::jsonb;
 alter table public.clients add column if not exists brand_guidelines text default '';

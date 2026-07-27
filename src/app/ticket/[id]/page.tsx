@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import {
   getTicket, getClientById, getTicketTimeEntries, getTicketTotalSeconds,
   getRunningTimer, getStylescapeForTicket, listUnattachedStylescapes, getTicketFeedback,
-  listTicketVersions, currentVersion,
+  listTicketVersions, currentVersion, getSettings, slaHoursForPlan,
 } from "@/lib/data";
 import { STATUS_LABELS, STATUS_DOT, formatDuration, driveEmbed } from "@/lib/tickets";
 import { TimerButton } from "@/components/LiveTimer";
@@ -37,6 +37,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     getTicketFeedback(id),
     listTicketVersions(id),
   ]);
+  const settings = await getSettings();
+  // Per-plan turnaround SLA: target = created + plan hours; badge while still open.
+  const slaHours = client ? slaHoursForPlan(client.plan, settings) : 0;
+  const targetMs = new Date(ticket.createdAt).getTime() + slaHours * 3600 * 1000;
+  const openStatus = ticket.status !== "done";
+  const hoursLeft = (targetMs - Date.now()) / 3600000;
+  const slaBadge = openStatus && slaHours > 0
+    ? (hoursLeft < 0
+        ? { text: `OVERDUE ${Math.round(-hoursLeft)}h`, color: "#D2452B" }
+        : { text: `DUE IN ${Math.max(0, Math.round(hoursLeft))}h`, color: hoursLeft < slaHours * 0.25 ? "#9C988C" : "#7FB77E" })
+    : null;
   const shown = currentVersion(versions);
   const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
   const isRunning = running?.ticketId === id;
@@ -56,6 +67,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <span style={{ width: 8, height: 8, borderRadius: 999, background: STATUS_DOT[ticket.status] }} />
           {STATUS_LABELS[ticket.status]}
         </span>
+        {slaBadge && (
+          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10.5, letterSpacing: 0.5, color: slaBadge.color,
+            border: `1px solid ${slaBadge.color}`, padding: "3px 8px", borderRadius: 4 }}>
+            {slaBadge.text}
+          </span>
+        )}
       </div>
 
       <div style={{ padding: 26, maxWidth: 760, margin: "0 auto" }}>

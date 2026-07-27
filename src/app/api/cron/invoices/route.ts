@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   let issued = 0;
   const results: string[] = [];
   for (const c of clients) {
+    if (c.status === "paused") continue; // paused subscription — don't bill
     if (c.paymentMethod === "stripe") continue; // Stripe handles recurring billing
     const created = c.createdAt ? new Date(c.createdAt) : null;
     const anchor = created ? Math.min(created.getDate(), daysInMonth) : 1;

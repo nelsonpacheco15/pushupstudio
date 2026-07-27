@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getClientById, getClientContacts, getOnboarding, listInvoicesForClient, listBrandAssets,
+  getClientById, getClientContacts, getOnboarding, listInvoicesForClient, listBrandAssets, getSatisfaction,
   ONBOARDING_KEYS, ONBOARDING_LABELS,
 } from "@/lib/data";
 import { formatEUR, planFor } from "@/lib/billing";
 import {
   updateClient, deleteClient, addClientContact, removeClientContact,
-  setOnboardingStep, issueInvoiceForClient, markInvoicePaid,
+  setOnboardingStep, issueInvoiceForClient, markInvoicePaid, setClientStatus,
   saveBrandInfo, uploadBrandAsset, removeBrandAsset,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
@@ -41,9 +41,10 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const client = await getClientById(id);
   if (!client) notFound();
-  const [contacts, onboarding, invoices, assets] = await Promise.all([
-    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id), listBrandAssets(id),
+  const [contacts, onboarding, invoices, assets, csat] = await Promise.all([
+    getClientContacts(id), getOnboarding(id), listInvoicesForClient(id), listBrandAssets(id), getSatisfaction(id),
   ]);
+  const paused = client.status === "paused";
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
   const portalUrl = `${appUrl}/portal/${client.portalToken}`;
 
@@ -60,6 +61,14 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
             <img src={client.logoUrl} alt="" style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover", border: `1px solid ${DS.border}` }} />
           )}
           <h1 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 30, letterSpacing: -0.5, margin: 0 }}>{client.name}</h1>
+          {paused && <span style={mono({ fontSize: 10, letterSpacing: 1, color: DS.amber, border: `1px solid ${DS.amber}`, padding: "3px 8px" })}>PAUSED</span>}
+          <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <div style={mono({ fontSize: 10, letterSpacing: 1, color: DS.faint })}>SATISFACTION</div>
+            <div style={{ fontFamily: DS.pixel, fontSize: 24, color: csat.avg == null ? DS.faint : DS.text }}>
+              {csat.avg == null ? "—" : `${csat.avg.toFixed(1)}/10`}
+            </div>
+            {csat.count > 0 && <div style={mono({ fontSize: 9.5, color: DS.faint })}>{csat.count} rating{csat.count === 1 ? "" : "s"}</div>}
+          </div>
         </div>
 
         {/* PROFILE */}
@@ -125,6 +134,18 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
             <input name="password" type="text" placeholder="Set / reset password (leave blank to keep)" autoComplete="off" style={dsInput} />
             <div style={{ marginTop: 16 }}><button type="submit" style={dsBtn}>Save account</button></div>
           </form>
+          <div style={{ borderTop: `1px solid ${DS.border}`, marginTop: 18, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...dsLabel }}>Subscription</div>
+              <div style={{ fontSize: 12.5, color: paused ? DS.amber : "#7FB77E", marginTop: 3 }}>
+                {paused ? "Paused — recurring invoices are on hold." : "Active — billed monthly."}
+              </div>
+            </div>
+            <form action={setClientStatus.bind(null, id, paused ? "active" : "paused")}>
+              <button type="submit" style={paused ? dsBtn : { ...dsBtnGhost }}>{paused ? "Resume" : "Pause billing"}</button>
+            </form>
+          </div>
+
           <div style={{ borderTop: `1px solid ${DS.border}`, marginTop: 18, paddingTop: 16 }}>
             <label style={{ ...dsLabel, display: "block", marginBottom: 6 }}>Locker Room link (share)</label>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>

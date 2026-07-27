@@ -74,6 +74,7 @@ export interface ClientRecord {
   portalToken: string;
   plan: string;
   paymentMethod: string;
+  status: string;
   brandPalette: string[];
   brandGuidelines: string;
 }
@@ -87,7 +88,7 @@ interface ClientRow {
   logo_url: string | null; brand_color: string | null; brand_font: string | null;
   language: string | null; portal_token: string; created_at?: string;
   password_hash?: string | null; plan?: string | null; payment_method?: string | null;
-  brand_palette?: string[] | null; brand_guidelines?: string | null;
+  status?: string | null; brand_palette?: string[] | null; brand_guidelines?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -96,9 +97,28 @@ function mapClient(data: ClientRow): ClientRecord {
     logoUrl: data.logo_url, brandColor: data.brand_color || "#D2452B", brandFont: data.brand_font ?? "",
     language: (data.language === "pt" ? "pt" : "en"), portalToken: data.portal_token,
     plan: data.plan || "growth", paymentMethod: data.payment_method || "bank_transfer",
+    status: data.status || "active",
     brandPalette: Array.isArray(data.brand_palette) ? data.brand_palette : [],
     brandGuidelines: data.brand_guidelines ?? "",
   };
+}
+
+export interface Satisfaction { avg: number | null; count: number; }
+
+/** Average client rating (0-10) across all scored feedback, optionally per client. */
+export async function getSatisfaction(clientId?: string): Promise<Satisfaction> {
+  let ticketIds: string[] | null = null;
+  if (clientId) {
+    const { data: ts } = await admin.from("tickets").select("id").eq("client_id", clientId);
+    ticketIds = (ts ?? []).map((t) => t.id as string);
+    if (ticketIds.length === 0) return { avg: null, count: 0 };
+  }
+  let q = admin.from("ticket_feedback").select("score").not("score", "is", null);
+  if (ticketIds) q = q.in("ticket_id", ticketIds);
+  const { data } = await q;
+  const scores = (data ?? []).map((r) => (r as { score: number }).score).filter((n) => typeof n === "number");
+  if (scores.length === 0) return { avg: null, count: 0 };
+  return { avg: scores.reduce((s, n) => s + n, 0) / scores.length, count: scores.length };
 }
 
 export interface BrandAsset { id: string; name: string; url: string; kind: string; createdAt: string; }
@@ -308,6 +328,12 @@ export interface StudioSettings {
   legalName: string; vat: string; address: string; iban: string; bank: string;
   studioEmail: string; fromEmail: string;
   growthCents: number; scaleCents: number; slaHours: number; autoInvoice: boolean;
+  growthSlaHours: number; scaleSlaHours: number;
+}
+
+/** Promised turnaround (hours) for a plan. */
+export function slaHoursForPlan(plan: string, s: StudioSettings): number {
+  return plan === "scale" ? s.scaleSlaHours : s.growthSlaHours;
 }
 
 const SETTINGS_DEFAULTS = (): StudioSettings => ({
@@ -319,6 +345,7 @@ const SETTINGS_DEFAULTS = (): StudioSettings => ({
   studioEmail: process.env.STUDIO_EMAIL || "",
   fromEmail: process.env.EMAIL_FROM || "",
   growthCents: 80000, scaleCents: 129900, slaHours: 45, autoInvoice: true,
+  growthSlaHours: 48, scaleSlaHours: 24,
 });
 
 /** Merge saved settings (app_settings rows) over env/code defaults. */
@@ -335,21 +362,22 @@ export async function getSettings(): Promise<StudioSettings> {
     growthCents: num("growthCents", d.growthCents), scaleCents: num("scaleCents", d.scaleCents),
     slaHours: num("slaHours", d.slaHours),
     autoInvoice: str("autoInvoice", d.autoInvoice ? "on" : "off") !== "off",
+    growthSlaHours: num("growthSlaHours", d.growthSlaHours), scaleSlaHours: num("scaleSlaHours", d.scaleSlaHours),
   };
 }
 
 /** Lightweight client list for recurring billing (id + billing-relevant fields). */
 export interface BillingClient {
   id: string; name: string; email: string; language: Lang; portalToken: string;
-  plan: string; paymentMethod: string; createdAt: string | null;
+  plan: string; paymentMethod: string; status: string; createdAt: string | null;
 }
 export async function listClientsForBilling(): Promise<BillingClient[]> {
-  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, created_at");
+  const { data } = await admin.from("clients").select("id, name, email, language, portal_token, plan, payment_method, status, created_at");
   return (data ?? []).map((c) => ({
     id: c.id as string, name: c.name as string, email: (c.email as string) ?? "",
     language: (c.language === "pt" ? "pt" : "en") as Lang, portalToken: c.portal_token as string,
     plan: (c.plan as string) || "growth", paymentMethod: (c.payment_method as string) || "bank_transfer",
-    createdAt: (c.created_at as string) ?? null,
+    status: (c.status as string) || "active", createdAt: (c.created_at as string) ?? null,
   }));
 }
 

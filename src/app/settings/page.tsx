@@ -72,6 +72,11 @@ export default async function SettingsPage() {
           <Section title="SERVICE LEVEL">
             <Field label="Attention threshold (hours)" name="slaHours" value={s.slaHours} type="number"
               hint="HQ flags a client when their oldest open request has waited longer than this." />
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}><Field label="Growth turnaround (hours)" name="growthSlaHours" value={s.growthSlaHours} type="number" /></div>
+              <div style={{ flex: 1 }}><Field label="Scale turnaround (hours)" name="scaleSlaHours" value={s.scaleSlaHours} type="number" /></div>
+            </div>
+            <div style={{ fontSize: 11, color: DS.faint, marginTop: -4 }}>Promised delivery time per plan — reps show a due/overdue badge against it.</div>
           </Section>
 
           <Section title="RECURRING BILLING">
