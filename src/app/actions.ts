@@ -342,6 +342,21 @@ export async function deleteClient(id: string): Promise<void> {
   redirect("/");
 }
 
+export async function addClientContact(clientId: string, formData: FormData): Promise<void> {
+  await requireStudio();
+  const email = String(formData.get("email") || "").trim();
+  const name = String(formData.get("name") || "").trim();
+  if (!email) return;
+  await admin.from("client_contacts").insert({ client_id: clientId, email, name: name || null });
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
+export async function removeClientContact(contactId: string, clientId: string): Promise<void> {
+  await requireStudio();
+  await admin.from("client_contacts").delete().eq("id", contactId);
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
 /* -------------------------------------------------------------- Stylescapes */
 
 export async function createStylescape(formData: FormData): Promise<void> {
