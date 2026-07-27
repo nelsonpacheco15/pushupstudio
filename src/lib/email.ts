@@ -163,6 +163,25 @@ export async function emailDone(c: ClientLite, ticketTitle: string): Promise<voi
   await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[L]));
 }
 
+/** Monthly recap: everything delivered for the client last month. */
+export async function emailMonthlyRecap(c: ClientLite, monthLabel: string, items: string[]): Promise<void> {
+  if (!c.email || items.length === 0) return;
+  const L = c.language;
+  const t = L === "pt"
+    ? { subject: `O teu mês na PushUP — ${monthLabel}`, h: "O teu mês em revista",
+        p: `Olá ${c.name}, aqui está tudo o que criámos para ti em ${bold(monthLabel)} — ${bold(String(items.length))} ${items.length === 1 ? "entrega" : "entregas"}. Obrigado por continuares a puxar connosco! 💪`,
+        cta: "Abrir o teu Locker Room" }
+    : { subject: `Your month at PushUP — ${monthLabel}`, h: "Your month in review",
+        p: `Hi ${c.name}, here's everything we made for you in ${bold(monthLabel)} — ${bold(String(items.length))} ${items.length === 1 ? "delivery" : "deliveries"}. Thanks for keeping the reps coming! 💪`,
+        cta: "Open your Locker Room" };
+  const list = items.map((title) =>
+    `<tr><td style="padding:8px 0;border-bottom:1px solid ${LINE};font-family:${SANS};font-size:14px;color:${TXT};">✓ ${title}</td></tr>`).join("");
+  const body = heading(t.h) + para(t.p) +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 12px;">${list}</table>` +
+    button(t.cta, portalUrl(c.portalToken));
+  await send(c.email, t.subject, shell(body, footer[L]));
+}
+
 /* ============================ studio / admin ============================ */
 
 export async function emailStudioNewClient(name: string, company?: string, language?: Lang): Promise<void> {

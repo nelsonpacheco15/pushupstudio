@@ -321,7 +321,7 @@ export interface StudioSettings {
   studioEmail: string; fromEmail: string;
   growthCents: number; scaleCents: number; slaHours: number; autoInvoice: boolean;
   growthSlaHours: number; scaleSlaHours: number; slackWebhookUrl: string;
-  whatsappPhone: string; whatsappApiKey: string;
+  whatsappPhone: string; whatsappApiKey: string; autoRecap: boolean; clientSelfService: boolean;
 }
 
 /** Promised turnaround (hours) for a plan. */
@@ -340,6 +340,7 @@ const SETTINGS_DEFAULTS = (): StudioSettings => ({
   growthCents: 80000, scaleCents: 129900, slaHours: 45, autoInvoice: true,
   growthSlaHours: 48, scaleSlaHours: 24, slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || "",
   whatsappPhone: process.env.WHATSAPP_PHONE || "", whatsappApiKey: process.env.WHATSAPP_APIKEY || "",
+  autoRecap: true, clientSelfService: true,
 });
 
 /** Merge saved settings (app_settings rows) over env/code defaults. */
@@ -359,7 +360,18 @@ export async function getSettings(): Promise<StudioSettings> {
     growthSlaHours: num("growthSlaHours", d.growthSlaHours), scaleSlaHours: num("scaleSlaHours", d.scaleSlaHours),
     slackWebhookUrl: str("slackWebhookUrl", d.slackWebhookUrl),
     whatsappPhone: str("whatsappPhone", d.whatsappPhone), whatsappApiKey: str("whatsappApiKey", d.whatsappApiKey),
+    autoRecap: str("autoRecap", d.autoRecap ? "on" : "off") !== "off",
+    clientSelfService: str("clientSelfService", d.clientSelfService ? "on" : "off") !== "off",
   };
+}
+
+/** Reps delivered (moved to Done) for a client within a date range — for the monthly recap. */
+export async function completedTicketsInRange(clientId: string, startISO: string, endISO: string): Promise<string[]> {
+  const { data } = await admin.from("tickets").select("title, updated_at")
+    .eq("client_id", clientId).eq("status", "done")
+    .gte("updated_at", startISO).lte("updated_at", endISO)
+    .order("updated_at", { ascending: true });
+  return (data ?? []).map((t) => t.title as string);
 }
 
 /** Lightweight client list for recurring billing (id + billing-relevant fields). */

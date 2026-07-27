@@ -95,6 +95,35 @@ export async function clientLogout(): Promise<void> {
   redirect("/enter");
 }
 
+/** Client self-service: switch own plan (if enabled in settings). Notifies studio. */
+export async function clientChangePlan(plan: "growth" | "scale"): Promise<void> {
+  const clientId = await getClientSession();
+  if (!clientId) redirect("/enter");
+  const settings = await getSettings();
+  if (!settings.clientSelfService) return;
+  const client = await getClientById(clientId);
+  if (!client || client.plan === plan) return;
+  await admin.from("clients").update({ plan }).eq("id", clientId);
+  await notify({ audience: "studio", clientId, type: "info",
+    title: `${client.name} changed plan`, body: `${planFor(client.plan).label} → ${planFor(plan).label}`, link: `/client/${clientId}/manage` });
+  revalidatePath("/me");
+}
+
+/** Client self-service: pause or resume own subscription. Notifies studio. */
+export async function clientTogglePause(): Promise<void> {
+  const clientId = await getClientSession();
+  if (!clientId) redirect("/enter");
+  const settings = await getSettings();
+  if (!settings.clientSelfService) return;
+  const client = await getClientById(clientId);
+  if (!client) return;
+  const next = client.status === "paused" ? "active" : "paused";
+  await admin.from("clients").update({ status: next }).eq("id", clientId);
+  await notify({ audience: "studio", clientId, type: "info",
+    title: `${client.name} ${next === "paused" ? "paused" : "resumed"} their plan`, link: `/client/${clientId}/manage` });
+  revalidatePath("/me");
+}
+
 /* -------------------------------------------------------------- Notifications */
 
 export interface NotifFeed { items: NotificationRecord[]; unread: number; }
@@ -314,6 +343,8 @@ export async function updateSettings(formData: FormData): Promise<void> {
     scaleSlaHours: String(Math.max(1, Math.round(Number(s("scaleSlaHours")) || 24))),
     slackWebhookUrl: s("slackWebhookUrl"),
     whatsappPhone: s("whatsappPhone"), whatsappApiKey: s("whatsappApiKey"),
+    autoRecap: formData.get("autoRecap") === "on" ? "on" : "off",
+    clientSelfService: formData.get("clientSelfService") === "on" ? "on" : "off",
   });
   revalidatePath("/settings");
   revalidatePath("/billing");

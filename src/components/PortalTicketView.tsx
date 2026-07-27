@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { STATUS_LABELS, driveEmbed, type Ticket } from "@/lib/tickets";
+import { STATUSES, driveEmbed, type Ticket } from "@/lib/tickets";
 import type { ClientRecord, TicketFeedback, TicketVersion } from "@/lib/data";
 import TicketEvaluation from "@/components/TicketEvaluation";
 import { DS } from "@/lib/theme";
@@ -10,20 +10,33 @@ import { DS } from "@/lib/theme";
 
 const T = {
   en: { brief: "BRIEF", design: "YOUR DESIGN", waiting: "Your design isn't ready yet — we'll email you the moment it is.",
-    reviewed: "Your feedback" },
+    reviewed: "Your feedback", steps: ["In queue", "Up next", "Designing", "Your review", "Delivered"],
+    eta: "Est. delivery", delivered: "Delivered", due: "Due", overdue: "Overdue" },
   pt: { brief: "BRIEFING", design: "O TEU DESIGN", waiting: "O teu design ainda não está pronto — enviamos-te um email assim que estiver.",
-    reviewed: "O teu feedback" },
+    reviewed: "O teu feedback", steps: ["Em fila", "A seguir", "Em design", "A tua revisão", "Entregue"],
+    eta: "Entrega prevista", delivered: "Entregue", due: "Prazo", overdue: "Atrasado" },
 };
 
 export default function PortalTicketView({
-  client, ticket, feedback, backHref, backLabel, versions = [], shown,
+  client, ticket, feedback, backHref, backLabel, versions = [], shown, slaHours = 0,
 }: {
   client: ClientRecord; ticket: Ticket; feedback: TicketFeedback[]; backHref: string; backLabel: string;
-  versions?: TicketVersion[]; shown?: TicketVersion | null;
+  versions?: TicketVersion[]; shown?: TicketVersion | null; slaHours?: number;
 }) {
   const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
   const accepted = shown?.status === "accepted";
   const t = T[client.language];
+
+  // Progress + ETA
+  const stepIdx = STATUSES.indexOf(ticket.status);
+  const done = ticket.status === "done";
+  const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(client.language === "pt" ? "pt-PT" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  let etaLabel = "";
+  if (done) etaLabel = `${t.delivered} · ${fmtDate(new Date(ticket.updatedAt).getTime())}`;
+  else if (slaHours > 0) {
+    const target = new Date(ticket.createdAt).getTime() + slaHours * 3600 * 1000;
+    etaLabel = target < Date.now() ? `${t.overdue}` : `${t.eta} · ${fmtDate(target)}`;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text }}>
@@ -37,8 +50,31 @@ export default function PortalTicketView({
       </div>
 
       <div style={{ padding: 26, maxWidth: 860, margin: "0 auto" }}>
-        <div style={{ fontFamily: DS.mono, fontSize: 11, letterSpacing: 0.8, color: DS.faint }}>[ {STATUS_LABELS[ticket.status].toUpperCase()} ]</div>
-        <h1 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 30, letterSpacing: -0.6, margin: "6px 0 20px" }}>{ticket.title}</h1>
+        <h1 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 30, letterSpacing: -0.6, margin: "0 0 18px" }}>{ticket.title}</h1>
+
+        {/* progress timeline + ETA */}
+        <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: "16px 18px", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
+            {t.steps.map((label, i) => {
+              const state = i < stepIdx ? "done" : i === stepIdx ? "current" : "todo";
+              const dot = state === "todo" ? DS.faint : DS.accent;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+                  {i > 0 && <div style={{ position: "absolute", top: 6, right: "50%", width: "100%", height: 2, background: i <= stepIdx ? DS.accent : DS.border }} />}
+                  <div style={{ width: 13, height: 13, borderRadius: 999, background: state === "todo" ? "transparent" : dot,
+                    border: `2px solid ${dot}`, zIndex: 1, boxShadow: state === "current" ? `0 0 0 4px ${DS.accentSoft}` : "none" }} />
+                  <div style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 0.3, marginTop: 8, textAlign: "center",
+                    color: state === "current" ? DS.text : DS.faint, fontWeight: state === "current" ? 700 : 400 }}>{label}</div>
+                </div>
+              );
+            })}
+          </div>
+          {etaLabel && (
+            <div style={{ fontFamily: DS.mono, fontSize: 11, color: etaLabel === t.overdue ? "#D2452B" : DS.mute, textAlign: "center", marginTop: 14 }}>
+              {done ? "✓ " : "◷ "}{etaLabel}
+            </div>
+          )}
+        </div>
 
         {ticket.description && (
           <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginBottom: 18 }}>

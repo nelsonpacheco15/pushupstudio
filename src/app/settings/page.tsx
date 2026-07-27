@@ -105,6 +105,14 @@ export default async function SettingsPage() {
             <div style={{ fontSize: 11, color: DS.faint, marginTop: 8 }}>
               Runs daily and bills each client once, on their signup day-of-month. Card (Stripe) clients are billed by Stripe.
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginTop: 14 }}>
+              <input type="checkbox" name="autoRecap" defaultChecked={s.autoRecap} style={{ width: 16, height: 16 }} />
+              <span style={{ fontSize: 13.5, color: DS.text }}>Email each client a monthly recap of everything delivered (on the 1st)</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginTop: 12 }}>
+              <input type="checkbox" name="clientSelfService" defaultChecked={s.clientSelfService} style={{ width: 16, height: 16 }} />
+              <span style={{ fontSize: 13.5, color: DS.text }}>Let clients change plan &amp; pause from their Locker Room</span>
+            </label>
           </Section>
 
           <button type="submit" style={{ ...dsBtn, padding: "11px 22px" }}>Save settings</button>

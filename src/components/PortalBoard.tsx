@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { clientLogout, startClientCheckout, reorderBacklogTicket, type NotifFeed } from "@/app/actions";
+import { clientLogout, startClientCheckout, reorderBacklogTicket, clientChangePlan, clientTogglePause, type NotifFeed } from "@/app/actions";
 import { STATUSES, STATUS_LABELS, STATUS_DOT, type TicketStatus, type Ticket } from "@/lib/tickets";
 import type { ClientRecord } from "@/lib/data";
 import RequestPanel from "@/components/RequestPanel";
@@ -10,15 +10,21 @@ export interface BillingStrip {
   planLabel: string; amountLabel: string; method: string; status: string; canPay: boolean;
 }
 
+export interface SelfService {
+  plan: string; paused: boolean;
+  growthLabel: string; scaleLabel: string;
+  invoices: { number: string; periodLabel: string; amountLabel: string; status: string }[];
+}
+
 /* The client "Locker Room" board. Shared by the public share-link portal
    (/portal/[token]) and the logged-in account view (/me). ticketHrefBase is the
    prefix for a ticket link, e.g. `/portal/<token>` or `/me`. */
 
 export default function PortalBoard({
-  client, tickets, ticketHrefBase, showLogout = false, billing, notifications,
+  client, tickets, ticketHrefBase, showLogout = false, billing, notifications, selfService,
 }: {
   client: ClientRecord; tickets: Ticket[]; ticketHrefBase: string; showLogout?: boolean;
-  billing?: BillingStrip; notifications?: NotifFeed;
+  billing?: BillingStrip; notifications?: NotifFeed; selfService?: SelfService;
 }) {
   const open = tickets.filter((t) => t.status !== "done").length;
 
@@ -119,9 +125,52 @@ export default function PortalBoard({
           })}
         </div>
 
-        {/* request form */}
-        <div>
+        {/* request form + account */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <RequestPanel clientId={client.id} portalToken={client.portalToken} />
+
+          {selfService && (
+            <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 18 }}>
+              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: 1, color: MUTE, marginBottom: 12 }}>[ YOUR PLAN ]</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {(["growth", "scale"] as const).map((p) => {
+                  const on = selfService.plan === p;
+                  const label = p === "growth" ? selfService.growthLabel : selfService.scaleLabel;
+                  return (
+                    <form key={p} action={clientChangePlan.bind(null, p)} style={{ flex: 1 }}>
+                      <button type="submit" disabled={on}
+                        style={{ width: "100%", cursor: on ? "default" : "pointer", borderRadius: 8, padding: "10px 8px",
+                          border: `1px solid ${on ? PAPER : LINE}`, background: on ? PAPER : "transparent", color: on ? INK : PAPER,
+                          fontSize: 12.5, fontWeight: 700, fontFamily: "'IBM Plex Mono'" }}>
+                        {label}{on ? " ✓" : ""}
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+              <form action={clientTogglePause}>
+                <button type="submit" style={{ width: "100%", background: "transparent", color: selfService.paused ? "#7FB77E" : MUTE,
+                  border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px", fontSize: 12, cursor: "pointer", fontFamily: "'IBM Plex Mono'" }}>
+                  {selfService.paused ? "▶ Resume subscription" : "⏸ Pause subscription"}
+                </button>
+              </form>
+              {selfService.paused && <div style={{ fontSize: 11, color: MUTE, marginTop: 8 }}>Your subscription is paused — no new invoices until you resume.</div>}
+
+              {selfService.invoices.length > 0 && (
+                <>
+                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: 1, color: MUTE, margin: "16px 0 8px" }}>[ INVOICES ]</div>
+                  {selfService.invoices.map((inv) => (
+                    <div key={inv.number} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: `1px solid ${LINE}`, fontSize: 12 }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono'", color: PAPER }}>{inv.number}</span>
+                      <span style={{ color: MUTE, flex: 1 }}>{inv.periodLabel}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono'" }}>{inv.amountLabel}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: inv.status === "paid" ? "#7FB77E" : MUTE }}>{inv.status.toUpperCase()}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
