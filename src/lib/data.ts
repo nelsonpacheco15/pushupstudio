@@ -317,6 +317,7 @@ export interface StudioSettings {
   studioEmail: string; fromEmail: string;
   growthCents: number; scaleCents: number; slaHours: number; autoInvoice: boolean;
   growthSlaHours: number; scaleSlaHours: number; slackWebhookUrl: string;
+  whatsappPhone: string; whatsappApiKey: string;
 }
 
 /** Promised turnaround (hours) for a plan. */
@@ -334,6 +335,7 @@ const SETTINGS_DEFAULTS = (): StudioSettings => ({
   fromEmail: process.env.EMAIL_FROM || "",
   growthCents: 80000, scaleCents: 129900, slaHours: 45, autoInvoice: true,
   growthSlaHours: 48, scaleSlaHours: 24, slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || "",
+  whatsappPhone: process.env.WHATSAPP_PHONE || "", whatsappApiKey: process.env.WHATSAPP_APIKEY || "",
 });
 
 /** Merge saved settings (app_settings rows) over env/code defaults. */
@@ -352,6 +354,7 @@ export async function getSettings(): Promise<StudioSettings> {
     autoInvoice: str("autoInvoice", d.autoInvoice ? "on" : "off") !== "off",
     growthSlaHours: num("growthSlaHours", d.growthSlaHours), scaleSlaHours: num("scaleSlaHours", d.scaleSlaHours),
     slackWebhookUrl: str("slackWebhookUrl", d.slackWebhookUrl),
+    whatsappPhone: str("whatsappPhone", d.whatsappPhone), whatsappApiKey: str("whatsappApiKey", d.whatsappApiKey),
   };
 }
 
@@ -399,17 +402,28 @@ interface NotificationInput {
   type: string; title: string; body?: string; link?: string | null;
 }
 
-/** Post a studio notification to Slack (best-effort) if a webhook is configured. */
-async function postToSlack(title: string, body?: string): Promise<void> {
+/** Fan a studio notification out to Slack + WhatsApp (best-effort) when configured. */
+async function fanoutStudioNotification(title: string, body?: string): Promise<void> {
   try {
-    const { data } = await admin.from("app_settings").select("value").eq("key", "slackWebhookUrl").limit(1);
-    const url = (data?.[0]?.value as string) || process.env.SLACK_WEBHOOK_URL || "";
-    if (!url) return;
-    await fetch(url, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: `*${title}*${body ? `\n${body}` : ""}` }),
-    });
-  } catch (e) { console.warn("[slack] failed:", (e as Error).message); }
+    const { data } = await admin.from("app_settings").select("key, value")
+      .in("key", ["slackWebhookUrl", "whatsappPhone", "whatsappApiKey"]);
+    const m = new Map((data ?? []).map((r) => [r.key as string, r.value as string]));
+    const text = `${title}${body ? `\n${body}` : ""}`;
+
+    const slack = m.get("slackWebhookUrl") || process.env.SLACK_WEBHOOK_URL || "";
+    if (slack) {
+      await fetch(slack, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: `*${title}*${body ? `\n${body}` : ""}` }) }).catch(() => {});
+    }
+
+    // WhatsApp via CallMeBot (free): needs the phone that authorised the bot + its apikey.
+    const phone = (m.get("whatsappPhone") || process.env.WHATSAPP_PHONE || "").replace(/[^\d+]/g, "");
+    const apikey = m.get("whatsappApiKey") || process.env.WHATSAPP_APIKEY || "";
+    if (phone && apikey) {
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apikey)}`;
+      await fetch(url).catch(() => {});
+    }
+  } catch (e) { console.warn("[fanout] failed:", (e as Error).message); }
 }
 
 /** Create an in-app notification. Best-effort — never throws into the caller. */
@@ -420,7 +434,7 @@ export async function notify(input: NotificationInput): Promise<void> {
       type: input.type, title: input.title, body: input.body ?? "", link: input.link ?? null,
     });
   } catch (e) { console.warn("[notify] failed:", (e as Error).message); }
-  if (input.audience === "studio") await postToSlack(input.title, input.body);
+  if (input.audience === "studio") await fanoutStudioNotification(input.title, input.body);
 }
 
 function mapNotification(r: Record<string, unknown>): NotificationRecord {

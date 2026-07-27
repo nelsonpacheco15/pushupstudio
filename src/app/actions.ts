@@ -313,6 +313,7 @@ export async function updateSettings(formData: FormData): Promise<void> {
     growthSlaHours: String(Math.max(1, Math.round(Number(s("growthSlaHours")) || 48))),
     scaleSlaHours: String(Math.max(1, Math.round(Number(s("scaleSlaHours")) || 24))),
     slackWebhookUrl: s("slackWebhookUrl"),
+    whatsappPhone: s("whatsappPhone"), whatsappApiKey: s("whatsappApiKey"),
   });
   revalidatePath("/settings");
   revalidatePath("/billing");

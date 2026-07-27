@@ -85,6 +85,18 @@ export default async function SettingsPage() {
               hint="Studio notifications (new requests, feedback, invoices) also post to this Slack channel. Create one at api.slack.com → Incoming Webhooks." />
           </Section>
 
+          <Section title="WHATSAPP NOTIFICATIONS">
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}><Field label="WhatsApp number" name="whatsappPhone" value={s.whatsappPhone} placeholder="+351912345678" /></div>
+              <div style={{ flex: 1 }}><Field label="CallMeBot API key" name="whatsappApiKey" value={s.whatsappApiKey} placeholder="123456" /></div>
+            </div>
+            <div style={{ fontSize: 11, color: DS.faint, marginTop: 4, lineHeight: 1.6 }}>
+              Free setup (~2 min): save <b style={{ color: DS.mute }}>+34 644 51 95 23</b> to your contacts, send it
+              <b style={{ color: DS.mute }}> “I allow callmebot to send me messages to this chat”</b> on WhatsApp, and it replies with your API key.
+              Paste your number + that key here and studio notifications also arrive on WhatsApp. (For a team channel, add the bot to a WhatsApp group per CallMeBot’s group instructions.)
+            </div>
+          </Section>
+
           <Section title="RECURRING BILLING">
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input type="checkbox" name="autoInvoice" defaultChecked={s.autoInvoice} style={{ width: 16, height: 16 }} />
