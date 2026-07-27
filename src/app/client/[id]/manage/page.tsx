@@ -8,7 +8,7 @@ import { formatEUR, planFor } from "@/lib/billing";
 import {
   updateClient, deleteClient, addClientContact, removeClientContact,
   setOnboardingStep, issueInvoiceForClient, markInvoicePaid, setClientStatus,
-  saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword, saveClientWhatsApp,
+  saveBrandInfo, uploadBrandAsset, removeBrandAsset, setContactPassword, saveClientWhatsApp, resendSetupInvite,
 } from "@/app/actions";
 import CopyButton from "@/components/CopyButton";
 import { DS, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
@@ -123,10 +123,24 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
                 </select>
               </div>
             </div>
-            <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Locker Room password</label>
-            <input name="password" type="text" placeholder="Set / reset password (leave blank to keep)" autoComplete="off" style={dsInput} />
+            <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Google Drive folder</label>
+            <input name="driveFolder" type="url" defaultValue={client.driveFolderUrl} placeholder="https://drive.google.com/drive/folders/…" style={dsInput} />
+            <label style={{ ...dsLabel, display: "block", margin: "12px 0 6px" }}>Locker Room password (manual)</label>
+            <input name="password" type="text" placeholder="Set directly (or use Send invite below)" autoComplete="off" style={dsInput} />
             <div style={{ marginTop: 16 }}><button type="submit" style={dsBtn}>Save account</button></div>
           </form>
+          <div style={{ borderTop: `1px solid ${DS.border}`, marginTop: 18, paddingTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={dsLabel}>Access invite</div>
+              <div style={{ fontSize: 12, color: DS.mute, marginTop: 3 }}>Emails the primary contact a link to set their own password.</div>
+            </div>
+            <form action={resendSetupInvite.bind(null, "client", id, id)}>
+              <button type="submit" style={dsBtnGhost}>Send setup invite</button>
+            </form>
+            {client.driveFolderUrl && (
+              <a href={client.driveFolderUrl} target="_blank" rel="noreferrer" style={{ ...dsBtnGhost, textDecoration: "none" }}>📁 Open Drive</a>
+            )}
+          </div>
           <div style={{ borderTop: `1px solid ${DS.border}`, marginTop: 18, paddingTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ ...dsLabel }}>Subscription</div>
@@ -253,8 +267,11 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
             <div key={ct.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${DS.border}`, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13, flex: 1, minWidth: 160 }}>{ct.name ? `${ct.name} · ` : ""}{ct.email}</span>
               <span style={mono({ fontSize: 10, letterSpacing: 0.5, color: ct.hasLogin ? "#7FB77E" : DS.faint })}>{ct.hasLogin ? "● CAN LOG IN" : "○ NO LOGIN"}</span>
+              <form action={resendSetupInvite.bind(null, "contact", ct.id, id)}>
+                <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Send invite</button>
+              </form>
               <form action={setContactPassword.bind(null, ct.id, id)} style={{ display: "flex", gap: 6 }}>
-                <input name="password" type="text" placeholder={ct.hasLogin ? "Reset password" : "Set password"} autoComplete="off" style={{ ...dsInput, padding: "5px 8px", fontSize: 12, width: 140 }} />
+                <input name="password" type="text" placeholder={ct.hasLogin ? "Reset password" : "Set password"} autoComplete="off" style={{ ...dsInput, padding: "5px 8px", fontSize: 12, width: 130 }} />
                 <button type="submit" style={{ ...dsBtnGhost, padding: "5px 10px", fontSize: 11 }}>Save</button>
               </form>
               <form action={removeClientContact.bind(null, ct.id, id)}>

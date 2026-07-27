@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { ClientSummary } from "@/lib/data";
-import { createClient } from "@/app/actions";
+import { createClient, deleteClient, setClientStatus, resendSetupInvite } from "@/app/actions";
 import { formatDuration, formatAgo } from "@/lib/tickets";
 import { DS, dsCard, dsInput, dsTextarea, dsBtn, dsBtnGhost, dsLabel } from "@/lib/theme";
 
@@ -47,9 +47,10 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
             const waiting = c.oldestOpenAt ? nowMs - new Date(c.oldestOpenAt).getTime() : 0;
             const overdue = waiting > WAIT_LIMIT_MS;
             return (
-              <Link key={c.id} href={`/client/${c.id}`}
-                style={{ ...dsCard, display: "block", padding: 20, borderColor: overdue ? DS.accent : DS.border }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+              <div key={c.id} style={{ ...dsCard, position: "relative", padding: 20, borderColor: overdue ? DS.accent : DS.border }}>
+                <CardMenu c={c} />
+                <Link href={`/client/${c.id}`} style={{ display: "block", color: "inherit" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 13, paddingRight: 28 }}>
                   {c.logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={c.logoUrl} alt="" style={{ width: 46, height: 46, borderRadius: 12, objectFit: "cover", border: `1px solid ${DS.border}` }} />
@@ -89,7 +90,8 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
                     {c.lastCompletedAt ? `del. ${formatAgo(c.lastCompletedAt, nowMs)} ago` : "no deliveries"}
                   </span>
                 </div>
-              </Link>
+                </Link>
+              </div>
             );
           })}
         </div>
@@ -97,6 +99,40 @@ export default function ClientsSection({ clients, nowMs }: { clients: ClientSumm
 
       {newOpen && <NewClientModal onClose={() => setNewOpen(false)} />}
     </div>
+  );
+}
+
+function CardMenu({ c }: { c: ClientSummary }) {
+  const [open, setOpen] = useState(false);
+  const paused = c.status === "paused";
+  const item: React.CSSProperties = { display: "block", width: "100%", textAlign: "left", background: "transparent",
+    border: "none", color: DS.text, padding: "9px 14px", fontSize: 13, cursor: "pointer", fontFamily: DS.body, textDecoration: "none" };
+  return (
+    <>
+      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((o) => !o); }} aria-label="Client actions"
+        style={{ position: "absolute", top: 14, right: 12, zIndex: 3, width: 28, height: 28, borderRadius: 7,
+          background: open ? DS.card2 : "transparent", border: `1px solid ${open ? DS.border : "transparent"}`, color: DS.mute,
+          cursor: "pointer", fontSize: 17, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>⋯</button>
+      {open && (
+        <>
+          <div onClick={(e) => { e.preventDefault(); setOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 4 }} />
+          <div style={{ position: "absolute", top: 44, right: 12, zIndex: 5, width: 210, background: DS.card,
+            border: `1px solid ${DS.border}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 14px 40px rgba(0,0,0,0.5)" }}>
+            <Link href={`/client/${c.id}`} style={item}>Open board</Link>
+            <Link href={`/client/${c.id}/manage`} style={item}>Manage client</Link>
+            {c.driveFolderUrl && <a href={c.driveFolderUrl} target="_blank" rel="noreferrer" style={item}>📁 Open Drive folder</a>}
+            <form action={resendSetupInvite.bind(null, "client", c.id, c.id)}><button type="submit" style={item}>Send access invite</button></form>
+            <div style={{ height: 1, background: DS.border }} />
+            <form action={setClientStatus.bind(null, c.id, paused ? "active" : "paused")}>
+              <button type="submit" style={item}>{paused ? "Resume billing" : "Pause billing"}</button>
+            </form>
+            <form action={deleteClient.bind(null, c.id)} onSubmit={(e) => { if (!confirm(`Delete ${c.name} and all their data? This cannot be undone.`)) e.preventDefault(); }}>
+              <button type="submit" style={{ ...item, color: "#D2452B" }}>Delete client</button>
+            </form>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -115,6 +151,8 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
         <input name="company" placeholder="Company name" style={dsInput} />
         <label style={{ ...lbl, marginTop: 12 }}>Primary email</label>
         <input name="email" type="email" placeholder="main@company.com" style={dsInput} />
+        <label style={{ ...lbl, marginTop: 12 }}>Google Drive folder</label>
+        <input name="driveFolder" type="url" placeholder="https://drive.google.com/drive/folders/…" style={dsInput} />
         <label style={{ ...lbl, marginTop: 12 }}>Language (emails &amp; portal)</label>
         <select name="language" defaultValue="en" style={dsInput}>
           <option value="en">English</option>

@@ -40,6 +40,22 @@ export async function verifyClientCookie(value: string | undefined): Promise<str
   return sig === expected ? id : null;
 }
 
+/** Signed "set your password" token for an invite link: `<kind>~<id>~<sig>`. */
+export async function signSetupToken(kind: "client" | "contact", id: string): Promise<string> {
+  const sig = await sha256(`${kind}:${id}:${secret()}`);
+  return `${kind}~${id}~${sig}`;
+}
+
+/** Verify a setup token from an invite link. Returns {kind, id} or null. */
+export async function verifySetupToken(token: string): Promise<{ kind: "client" | "contact"; id: string } | null> {
+  const parts = (token || "").split("~");
+  if (parts.length !== 3) return null;
+  const [kind, id, sig] = parts;
+  if (kind !== "client" && kind !== "contact") return null;
+  const expected = await sha256(`${kind}:${id}:${secret()}`);
+  return sig === expected ? { kind, id } : null;
+}
+
 /** Read the current logged-in client id from cookies (server components). */
 export async function getClientSession(): Promise<string | null> {
   const v = (await cookies()).get(CLIENT_COOKIE)?.value;

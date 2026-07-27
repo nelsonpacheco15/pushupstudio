@@ -26,6 +26,9 @@ export default function ClientBoardHeader({ client }: { client: ClientRecord }) 
           <span style={{ fontFamily: client.brandFont ? `'${client.brandFont}', ${DS.display}` : DS.display, fontWeight: 700, fontSize: 19, letterSpacing: -0.3 }}>{client.name}</span>
           {client.company && <span style={{ fontFamily: DS.mono, fontSize: 11, color: DS.faint, marginLeft: 10 }}>/ {client.company}</span>}
         </div>
+        {client.driveFolderUrl && (
+          <a href={client.driveFolderUrl} target="_blank" rel="noreferrer" style={{ ...dsBtnGhost, textDecoration: "none" }}>📁 Drive</a>
+        )}
         <button onClick={() => setEdit(true)} style={dsBtnGhost}>Quick edit</button>
         <Link href={`/client/${client.id}/manage`} style={{ ...dsBtn, textDecoration: "none" }}>Manage</Link>
       </div>

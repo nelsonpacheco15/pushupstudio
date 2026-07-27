@@ -13,7 +13,7 @@ import { issueMonthlyInvoice } from "@/lib/invoicing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
 import { requireStudio, isStudio, computeToken, AUTH_COOKIE } from "@/lib/auth";
-import { hashPassword, signClient, CLIENT_COOKIE, getClientSession } from "@/lib/clientAuth";
+import { hashPassword, signClient, CLIENT_COOKIE, getClientSession, signSetupToken, verifySetupToken } from "@/lib/clientAuth";
 import { getStripe, stripeEnabled, priceForPlan } from "@/lib/stripe";
 import * as mail from "@/lib/email";
 
@@ -167,6 +167,7 @@ export async function createClient(formData: FormData): Promise<void> {
   const plan = String(formData.get("plan") || "").trim() || "growth";
   const method = formData.get("method") === "stripe" ? "stripe" : "bank_transfer";
   const password = String(formData.get("password") || "");
+  const driveFolder = String(formData.get("driveFolder") || "").trim();
   const logo = formData.get("logo");
   if (!name) return; // ignore empty submits
 
@@ -181,7 +182,7 @@ export async function createClient(formData: FormData): Promise<void> {
     logoUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
   }
 
-  const insertRow: Record<string, unknown> = { name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language, plan, payment_method: method };
+  const insertRow: Record<string, unknown> = { name, company, email, brand_color: brandColor, brand_font: brandFont, logo_url: logoUrl, language, plan, payment_method: method, drive_folder_url: driveFolder };
   if (password) insertRow.password_hash = await hashPassword(password);
   const { data, error } = await admin
     .from("clients")
@@ -200,9 +201,10 @@ export async function createClient(formData: FormData): Promise<void> {
   for (const e of contactEmails) {
     await mail.emailClientWelcome({ name: data.name, email: e, portalToken: data.portal_token, language });
   }
-  // If a Locker Room password was set, email the primary contact their login.
-  if (password && data.email) {
-    await mail.emailLoginInvite({ email: data.email, name: data.name, clientName: data.name, password, language });
+  // Email the primary contact a "set your password" invite (unless studio already set one).
+  if (data.email && !password) {
+    const url = `${appUrl()}/setup/${await signSetupToken("client", data.id)}`;
+    await mail.emailSetupInvite({ email: data.email, name: data.name, clientName: data.name, setupUrl: url, language });
   }
   await mail.emailStudioNewClient(data.name, company, language);
   await notify({ audience: "studio", clientId: data.id, type: "client_added",
@@ -245,10 +247,12 @@ export async function updateClient(formData: FormData): Promise<void> {
   const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
 
+  const driveFolder = formData.get("driveFolder");
   const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont, language };
   if (name) patch.name = name;
   if (plan) patch.plan = plan;
   if (method === "stripe" || method === "bank_transfer") patch.payment_method = method;
+  if (typeof driveFolder === "string") patch.drive_folder_url = driveFolder.trim();
   if (password) patch.password_hash = await hashPassword(password);
   if (logo instanceof File && logo.size > 0) {
     if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
@@ -261,11 +265,6 @@ export async function updateClient(formData: FormData): Promise<void> {
   }
   const { error } = await admin.from("clients").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-
-  // If a password was (re)set, email the primary contact their login.
-  if (password && email) {
-    await mail.emailLoginInvite({ email, name: name || "", clientName: name || email, password, language });
-  }
 
   const contactEmails = contactsRaw.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
   if (contactEmails.length) {
@@ -431,6 +430,8 @@ export async function setClientStatus(clientId: string, status: "active" | "paus
   revalidatePath("/");
 }
 
+const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+
 export async function addClientContact(clientId: string, formData: FormData): Promise<void> {
   await requireStudio();
   const email = String(formData.get("email") || "").trim();
@@ -439,27 +440,63 @@ export async function addClientContact(clientId: string, formData: FormData): Pr
   if (!email) return;
   const row: Record<string, unknown> = { client_id: clientId, email, name: name || null };
   if (password) row.password_hash = await hashPassword(password);
-  await admin.from("client_contacts").insert(row);
-  // Email the new seat their dashboard link + login when a password was set.
-  if (password) {
-    const client = await getClientById(clientId);
-    if (client) await mail.emailLoginInvite({ email, name, clientName: client.name, password, language: client.language });
+  const { data: inserted } = await admin.from("client_contacts").insert(row).select("id").single();
+  // Always email the new seat a "set your password" invite so they can get in.
+  const client = await getClientById(clientId);
+  if (client && inserted?.id) {
+    const url = `${appUrl()}/setup/${await signSetupToken("contact", inserted.id)}`;
+    await mail.emailSetupInvite({ email, name, clientName: client.name, setupUrl: url, language: client.language });
   }
   revalidatePath(`/client/${clientId}/manage`);
 }
 
-/** Set / reset a contact seat's Locker Room password + email them the new login. */
+/** Studio: manually set a contact's password (no email — studio shares it). */
 export async function setContactPassword(contactId: string, clientId: string, formData: FormData): Promise<void> {
   await requireStudio();
   const password = String(formData.get("password") || "");
   if (!password) return;
   await admin.from("client_contacts").update({ password_hash: await hashPassword(password) }).eq("id", contactId);
-  const { data: ct } = await admin.from("client_contacts").select("email, name").eq("id", contactId).single();
-  const client = await getClientById(clientId);
-  if (ct?.email && client) {
-    await mail.emailLoginInvite({ email: ct.email, name: ct.name || "", clientName: client.name, password, language: client.language });
-  }
   revalidatePath(`/client/${clientId}/manage`);
+}
+
+/** Re-send the "set your password" invite email to a contact or the primary client. */
+export async function resendSetupInvite(kind: "client" | "contact", id: string, clientId: string): Promise<void> {
+  await requireStudio();
+  const client = await getClientById(clientId);
+  if (!client) return;
+  let email = client.email, name = client.name;
+  if (kind === "contact") {
+    const { data: ct } = await admin.from("client_contacts").select("email, name").eq("id", id).single();
+    if (!ct?.email) return;
+    email = ct.email; name = ct.name || "";
+  }
+  const url = `${appUrl()}/setup/${await signSetupToken(kind, id)}`;
+  await mail.emailSetupInvite({ email, name, clientName: client.name, setupUrl: url, language: client.language });
+  revalidatePath(`/client/${clientId}/manage`);
+}
+
+/** Client completes their setup: sets password, logs in, lands in the Locker Room. */
+export async function completeSetup(token: string, formData: FormData): Promise<void> {
+  const target = await verifySetupToken(token);
+  if (!target) redirect("/enter?error=1");
+  const password = String(formData.get("password") || "");
+  if (password.length < 8) redirect(`/setup/${token}?error=short`);
+  const hash = await hashPassword(password);
+
+  let clientId: string;
+  if (target!.kind === "contact") {
+    await admin.from("client_contacts").update({ password_hash: hash }).eq("id", target!.id);
+    const { data: ct } = await admin.from("client_contacts").select("client_id").eq("id", target!.id).single();
+    if (!ct?.client_id) redirect("/enter?error=1");
+    clientId = ct.client_id;
+  } else {
+    await admin.from("clients").update({ password_hash: hash }).eq("id", target!.id);
+    clientId = target!.id;
+  }
+  (await cookies()).set(CLIENT_COOKIE, await signClient(clientId), {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30,
+  });
+  redirect("/me");
 }
 
 export async function removeClientContact(contactId: string, clientId: string): Promise<void> {

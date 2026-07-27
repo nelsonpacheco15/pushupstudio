@@ -79,6 +79,7 @@ export interface ClientRecord {
   brandGuidelines: string;
   whatsappPhone: string;
   whatsappApiKey: string;
+  driveFolderUrl: string;
 }
 
 // "*" so a not-yet-migrated column (language/onboarding/logo_url…) can't break
@@ -91,7 +92,7 @@ interface ClientRow {
   language: string | null; portal_token: string; created_at?: string;
   password_hash?: string | null; plan?: string | null; payment_method?: string | null;
   status?: string | null; brand_palette?: string[] | null; brand_guidelines?: string | null;
-  whatsapp_phone?: string | null; whatsapp_apikey?: string | null;
+  whatsapp_phone?: string | null; whatsapp_apikey?: string | null; drive_folder_url?: string | null;
 }
 
 function mapClient(data: ClientRow): ClientRecord {
@@ -104,6 +105,7 @@ function mapClient(data: ClientRow): ClientRecord {
     brandPalette: Array.isArray(data.brand_palette) ? data.brand_palette : [],
     brandGuidelines: data.brand_guidelines ?? "",
     whatsappPhone: data.whatsapp_phone ?? "", whatsappApiKey: data.whatsapp_apikey ?? "",
+    driveFolderUrl: data.drive_folder_url ?? "",
   };
 }
 
@@ -237,6 +239,12 @@ export async function getClientAuthByEmail(email: string): Promise<{ id: string;
   const c = cData?.[0] as { client_id: string; password_hash?: string | null } | undefined;
   if (c?.password_hash) return { id: c.client_id, passwordHash: c.password_hash };
   return null;
+}
+
+export async function getContactInfo(contactId: string): Promise<{ clientId: string; email: string; name: string } | null> {
+  const { data } = await admin.from("client_contacts").select("client_id, email, name").eq("id", contactId).single();
+  if (!data) return null;
+  return { clientId: data.client_id, email: data.email ?? "", name: data.name ?? "" };
 }
 
 export async function getClientByPortalToken(token: string): Promise<ClientRecord | null> {
