@@ -19,6 +19,9 @@ export default function VersionManager({ ticketId, versions, changeNote }: { tic
   const hasAccepted = versions.some((v) => v.status === "accepted");
   const last = versions[versions.length - 1];
   const awaitingRevision = last?.status === "changes";
+  // The version shown to the client as the main design: accepted one, else the latest.
+  const current = versions.find((v) => v.status === "accepted") ?? last;
+  const ordered = [...versions].reverse(); // newest first
 
   function add() {
     if (!value.trim()) return;
@@ -33,16 +36,23 @@ export default function VersionManager({ ticketId, versions, changeNote }: { tic
     <div>
       {versions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          {versions.map((v) => {
+          {ordered.map((v) => {
             const st = STATUS[v.status] ?? STATUS.pending;
+            const isCurrent = current?.id === v.id;
+            const ts = new Date(v.createdAt).toLocaleString(undefined, {
+              day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+            });
             return (
-              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+              <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0",
                 borderTop: `1px solid ${DS.border}` }}>
-                <span style={{ fontFamily: DS.mono, fontSize: 12, color: DS.text, width: 34 }}>v{v.version}</span>
+                <span style={{ fontFamily: DS.mono, fontSize: 12, color: DS.text, width: 30 }}>v{v.version}</span>
+                <span style={{ fontFamily: DS.mono, fontSize: 10.5, color: DS.faint, width: 96 }}>{ts}</span>
                 <span style={{ fontFamily: DS.mono, fontSize: 10.5, letterSpacing: 0.5, color: st.color, width: 96 }}>{st.label}</span>
+                {isCurrent && <span style={{ fontFamily: DS.mono, fontSize: 9.5, letterSpacing: 0.5, color: DS.bg,
+                  background: DS.accent, borderRadius: 3, padding: "2px 6px" }}>SHOWN</span>}
                 <a href={v.url} target="_blank" rel="noreferrer"
-                  style={{ fontFamily: DS.mono, fontSize: 11.5, color: DS.mute, wordBreak: "break-all", flex: 1, minWidth: 0, textDecoration: "underline" }}>
-                  {v.url}
+                  style={{ fontFamily: DS.mono, fontSize: 11.5, color: DS.mute, wordBreak: "break-all", flex: 1, minWidth: 0, textDecoration: "underline", textAlign: "right" }}>
+                  open ↗
                 </a>
               </div>
             );

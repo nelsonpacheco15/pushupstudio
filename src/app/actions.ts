@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { admin, BUCKET, getClientByPortalToken, getClientById, getClientAuthByEmail,
-  createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion } from "@/lib/data";
+  createInvoice, setInvoiceStatus, addTicketVersion, decideLatestVersion, listTicketVersions } from "@/lib/data";
 import { planFor } from "@/lib/billing";
 import { LAYOUTS, flattenTiles } from "@/lib/layouts";
 import { REQUEST_TYPES } from "@/lib/tickets";
@@ -461,6 +461,24 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
   await requireStudio();
   const clean = url.trim();
   if (!clean) return;
+
+  // Legacy tickets had a single deliverable_url with no version rows. Capture that
+  // existing design as v1 (marked per the client's last decision) before adding the new one.
+  const existing = await listTicketVersions(ticketId);
+  if (existing.length === 0) {
+    const { data: cur } = await admin.from("tickets").select("deliverable_url").eq("id", ticketId).single();
+    const oldUrl = (cur as { deliverable_url?: string | null } | null)?.deliverable_url?.trim();
+    if (oldUrl && oldUrl !== clean) {
+      const { data: fb } = await admin.from("ticket_feedback").select("decision")
+        .eq("ticket_id", ticketId).order("created_at", { ascending: false }).limit(1);
+      const lastDecision = (fb?.[0] as { decision?: string } | undefined)?.decision;
+      await admin.from("ticket_versions").insert({
+        ticket_id: ticketId, version: 1, url: oldUrl,
+        status: lastDecision === "changes" ? "changes" : lastDecision === "approved" ? "accepted" : "pending",
+      });
+    }
+  }
+
   const version = await addTicketVersion(ticketId, clean);
   const { data: t } = await admin.from("tickets").select("client_id, status, title").eq("id", ticketId).single();
   await admin.from("tickets").update({ deliverable_url: clean, status: "review", updated_at: new Date().toISOString() }).eq("id", ticketId);
