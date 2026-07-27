@@ -4,6 +4,7 @@ import { authDisabled } from "@/lib/auth";
 import { listStudioNotifications, getSearchIndex } from "@/lib/data";
 import NotificationBell from "@/components/NotificationBell";
 import CommandPalette from "@/components/CommandPalette";
+import SidebarShell from "@/components/SidebarShell";
 import { DS } from "@/lib/theme";
 
 const ITEMS = [
@@ -19,8 +20,7 @@ export default async function StudioNav({ active }: { active: "overview" | "styl
   const [items, searchIndex] = await Promise.all([listStudioNotifications(), getSearchIndex()]);
   const feed = { items, unread: items.filter((n) => !n.readAt).length };
   return (
-    <aside style={{ width: 232, flex: "0 0 232px", background: DS.bg2, borderRight: `1px solid ${DS.border}`,
-      minHeight: "100vh", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0 }}>
+    <SidebarShell>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 6px 8px 10px" }}>
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,6 +65,6 @@ export default async function StudioNav({ active }: { active: "overview" | "styl
           </form>
         )}
       </div>
-    </aside>
+    </SidebarShell>
   );
 }

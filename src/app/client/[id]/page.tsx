@@ -25,7 +25,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text, display: "flex" }}>
       <Scanlines />
       <StudioNav active="overview" />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="studio-main" style={{ flex: 1, minWidth: 0 }}>
         <ClientBoardHeader client={client} />
         <div style={{ padding: "24px 32px" }}>
           <KanbanBoard

@@ -40,7 +40,7 @@ export default async function Overview() {
     <div style={{ display: "flex", background: DS.bg, minHeight: "100vh", color: DS.text }}>
       <Scanlines />
       <StudioNav active="overview" />
-      <main style={{ flex: 1, minWidth: 0, padding: "34px 40px", maxWidth: 1280, margin: "0 auto", position: "relative" }}>
+      <main className="studio-main" style={{ flex: 1, minWidth: 0, padding: "34px 40px", maxWidth: 1280, margin: "0 auto", position: "relative" }}>
         <DitherCorner />
         <div style={mono({ fontSize: 11, letterSpacing: 1.2, color: DS.mute })}>┌─ STUDIO / HQ ───────</div>
         <h1 style={{ fontFamily: DS.pixel, fontWeight: 700, fontSize: 56, letterSpacing: 1, textTransform: "uppercase",

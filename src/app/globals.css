@@ -19,3 +19,30 @@ textarea, input, button { font-family: inherit; }
 ::placeholder { color: #6b6659; }
 
 @keyframes ds-blink { 50% { opacity: 0; } }
+
+/* ---- responsive studio shell ---- */
+.studio-sidebar {
+  width: 232px; flex: 0 0 232px; background: #0C0C0F; border-right: 1px solid rgba(255, 255, 255, 0.13);
+  min-height: 100vh; padding: 24px 16px; display: flex; flex-direction: column; position: sticky; top: 0;
+}
+.studio-hamburger { display: none; }
+@media (max-width: 860px) {
+  .studio-hamburger {
+    display: inline-flex; align-items: center; justify-content: center;
+    position: fixed; top: 12px; left: 12px; z-index: 96; width: 40px; height: 40px; border-radius: 10px;
+    background: #0C0C0F; border: 1px solid rgba(255, 255, 255, 0.14); color: #E9E7DE; font-size: 17px; cursor: pointer;
+  }
+  .studio-sidebar {
+    position: fixed !important; left: 0; top: 0; height: 100vh; width: 232px;
+    transform: translateX(-100%); transition: transform 0.2s ease; z-index: 98;
+  }
+  .studio-sidebar.open { transform: translateX(0); box-shadow: 0 0 70px rgba(0, 0, 0, 0.7); }
+  .studio-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); z-index: 97; }
+  .studio-main { padding-top: 56px !important; }
+}
+
+/* collapse fixed multi-column grids on narrow screens */
+@media (max-width: 720px) {
+  .grid-collapse { grid-template-columns: 1fr !important; }
+  .grid-collapse-2 { grid-template-columns: 1fr 1fr !important; }
+}

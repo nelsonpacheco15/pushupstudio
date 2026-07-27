@@ -70,7 +70,7 @@ export default async function AnalyticsPage() {
         <div style={mono({ fontSize: 11, letterSpacing: 1.2, color: DS.mute })}>┌─ STUDIO / ANALYTICS ───────</div>
         <h1 style={{ fontFamily: DS.pixel, fontWeight: 700, fontSize: 52, letterSpacing: 1, textTransform: "uppercase", margin: "10px 0 26px", lineHeight: 1 }}>Analytics</h1>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
+        <div className="grid-collapse-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}>
           {tiles.map((t) => (
             <div key={t.label} style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: DS.radius, padding: "16px 18px" }}>
               <div style={mono({ fontSize: 9.5, letterSpacing: 1, color: DS.faint })}>[ {t.label.toUpperCase()} ]</div>
@@ -79,7 +79,7 @@ export default async function AnalyticsPage() {
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 28 }}>
+        <div className="grid-collapse" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 28 }}>
           <Card>
             <Label>REQUEST VOLUME BY STAGE</Label>
             {STATUS_ORDER.map(([k, label]) => (

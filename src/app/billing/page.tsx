@@ -36,7 +36,7 @@ export default async function BillingPage() {
           margin: "10px 0 26px", lineHeight: 1, color: DS.text }}>Billing</h1>
 
         {/* stat tiles */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }}>
+        <div className="grid-collapse" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }}>
           {[
             { label: "MRR", value: formatEUR(mrrTotal) },
             { label: "OUTSTANDING", value: formatEUR(outstanding) },
