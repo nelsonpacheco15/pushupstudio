@@ -1,5 +1,5 @@
 import "server-only";
-import type { Lang, Invoice } from "@/lib/data";
+import { getEmailFrom, getStudioEmailAddr, type Lang, type Invoice } from "@/lib/data";
 import { formatEUR, planFor } from "@/lib/billing";
 
 export interface InvoiceIssuer { name: string; iban: string; bank: string; }
@@ -8,8 +8,6 @@ export interface InvoiceIssuer { name: string; iban: string; bank: string; }
    Terminal-branded, table-based HTML, web-safe fonts, hosted white logo.
    Client-facing copy is localized to the client's language (en / pt). */
 
-const FROM = process.env.EMAIL_FROM || "PushUP Studio <onboarding@resend.dev>";
-const STUDIO_EMAIL = process.env.STUDIO_EMAIL || "";
 const APP_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 const LOGO = "https://jsyxwuwmzgwlpstdcpkm.supabase.co/storage/v1/object/public/stylescape-images/brand/logo-white.png";
 
@@ -20,11 +18,12 @@ const SANS = "Helvetica, Arial, sans-serif";
 async function send(to: string, subject: string, html: string): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key || !to) return;
+  const from = await getEmailFrom(); // from-name/address comes from Settings (falls back to env)
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
+      body: JSON.stringify({ from, to, subject, html }),
     });
     if (!res.ok) console.warn(`[email] send failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
   } catch (e) { console.warn("[email] error:", e); }
@@ -204,6 +203,7 @@ export async function emailMonthlyRecap(c: ClientLite, monthLabel: string, items
 /* ============================ studio / admin ============================ */
 
 export async function emailStudioNewClient(name: string, company?: string, language?: Lang): Promise<void> {
+  const STUDIO_EMAIL = await getStudioEmailAddr();
   if (!STUDIO_EMAIL) return;
   const meta = `${company ? `${company} · ` : ""}${(language ?? "en").toUpperCase()}`;
   await send(STUDIO_EMAIL, `New client: ${name}`,
@@ -213,6 +213,7 @@ export async function emailStudioNewClient(name: string, company?: string, langu
 }
 
 export async function emailStudioNewRequest(clientName: string, ticketTitle: string): Promise<void> {
+  const STUDIO_EMAIL = await getStudioEmailAddr();
   if (!STUDIO_EMAIL) return;
   await send(STUDIO_EMAIL, `New request from ${clientName}`,
     shell(heading("New request") + para(`${bold(clientName)} just submitted a new request:`) +
@@ -278,6 +279,7 @@ export async function emailInvoiceIssued(
   const html = shell(heading(t.h) + para(t.p) + invoiceBody(inv, L) + cta, footer[L]);
   await send(client.email, t.subject, html);
 
+  const STUDIO_EMAIL = await getStudioEmailAddr();
   if (STUDIO_EMAIL) {
     const meta = `${inv.clientName || client.name} · ${plan.label} · ${formatEUR(inv.amountCents)} · ${inv.method === "stripe" ? "CARD" : "BANK TRANSFER"}`;
     await send(STUDIO_EMAIL, `Invoice ${inv.number} — ${client.name}`,

@@ -454,6 +454,18 @@ export async function hasInvoiceForPeriod(clientId: string, periodLabel: string)
   return (count ?? 0) > 0;
 }
 
+/** Resolve the outgoing "from" address: Settings → env → default. Used by email.ts. */
+export async function getEmailFrom(): Promise<string> {
+  const { data } = await admin.from("app_settings").select("value").eq("key", "fromEmail").limit(1);
+  return ((data?.[0]?.value as string) || "").trim() || process.env.EMAIL_FROM || "PushUP Studio <onboarding@resend.dev>";
+}
+
+/** Resolve where the studio owner gets notified: Settings → env. Used by email.ts. */
+export async function getStudioEmailAddr(): Promise<string> {
+  const { data } = await admin.from("app_settings").select("value").eq("key", "studioEmail").limit(1);
+  return ((data?.[0]?.value as string) || "").trim() || process.env.STUDIO_EMAIL || "";
+}
+
 export async function saveSettings(patch: Partial<Record<keyof StudioSettings, string>>): Promise<void> {
   const rows = Object.entries(patch).map(([key, value]) => ({ key, value: String(value ?? ""), updated_at: new Date().toISOString() }));
   if (!rows.length) return;
