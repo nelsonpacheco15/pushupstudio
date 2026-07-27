@@ -322,6 +322,38 @@ export async function setInvoiceStatus(id: string, status: string): Promise<void
   await admin.from("invoices").update(patch).eq("id", id);
 }
 
+/* -------------------------------------------------------------------- Search */
+
+export interface SearchItem { type: "client" | "rep"; id: string; label: string; sub: string; href: string; }
+
+/** Lightweight index of clients + reps for the ⌘P command palette. */
+export async function getSearchIndex(): Promise<SearchItem[]> {
+  const [cRes, tRes] = await Promise.all([
+    admin.from("clients").select("id, name, company"),
+    admin.from("tickets").select("id, title, status, client_id"),
+  ]);
+  const names = new Map((cRes.data ?? []).map((c) => [c.id as string, c.name as string]));
+  const items: SearchItem[] = [];
+  for (const c of cRes.data ?? []) items.push({ type: "client", id: c.id, label: c.name, sub: c.company || "Athlete", href: `/client/${c.id}` });
+  for (const t of tRes.data ?? []) items.push({ type: "rep", id: t.id, label: t.title || "Untitled", sub: `${names.get(t.client_id) ?? ""} · ${t.status}`, href: `/ticket/${t.id}` });
+  return items;
+}
+
+/** All reps across every client, for the studio-wide Calendar/All-requests views. */
+export interface StudioTicket { id: string; title: string; status: TicketStatus; clientId: string; clientName: string; priority: number; deadline: string; createdAt: string; updatedAt: string; }
+export async function listAllTickets(): Promise<StudioTicket[]> {
+  const [cRes, tRes] = await Promise.all([
+    admin.from("clients").select("id, name"),
+    admin.from("tickets").select("id, title, status, client_id, priority, form, created_at, updated_at").order("created_at", { ascending: false }),
+  ]);
+  const names = new Map((cRes.data ?? []).map((c) => [c.id as string, c.name as string]));
+  return (tRes.data ?? []).map((t) => ({
+    id: t.id, title: t.title || "Untitled", status: t.status as TicketStatus, clientId: t.client_id,
+    clientName: names.get(t.client_id) ?? "", priority: t.priority ?? 0,
+    deadline: (t.form as { deadline?: string })?.deadline || "", createdAt: t.created_at, updatedAt: t.updated_at,
+  }));
+}
+
 /* ------------------------------------------------------------------ Settings */
 
 export interface StudioSettings {
@@ -406,7 +438,9 @@ export async function hasInvoiceForPeriod(clientId: string, periodLabel: string)
 
 export async function saveSettings(patch: Partial<Record<keyof StudioSettings, string>>): Promise<void> {
   const rows = Object.entries(patch).map(([key, value]) => ({ key, value: String(value ?? ""), updated_at: new Date().toISOString() }));
-  if (rows.length) await admin.from("app_settings").upsert(rows, { onConflict: "key" });
+  if (!rows.length) return;
+  const { error } = await admin.from("app_settings").upsert(rows, { onConflict: "key" });
+  if (error) throw new Error(`Could not save settings: ${error.message}`);
 }
 
 /** Monthly amount (cents) for a plan, honouring settings overrides. */

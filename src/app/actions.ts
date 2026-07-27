@@ -360,6 +360,7 @@ export async function updateSettings(formData: FormData): Promise<void> {
   revalidatePath("/settings");
   revalidatePath("/billing");
   revalidatePath("/");
+  redirect("/settings?saved=1");
 }
 
 export async function setOnboardingStep(clientId: string, key: string, done: boolean): Promise<void> {

@@ -30,8 +30,9 @@ function Field({ label, name, value, placeholder, type = "text", hint }: {
   );
 }
 
-export default async function SettingsPage() {
-  const s = await getSettings();
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  const [s, sp] = await Promise.all([getSettings(), searchParams]);
+  const saved = sp?.saved === "1";
 
   return (
     <div style={{ minHeight: "100vh", background: DS.bg, color: DS.text, display: "flex" }}>
@@ -42,6 +43,11 @@ export default async function SettingsPage() {
         <div style={mono({ fontSize: 11, letterSpacing: 1.2, color: DS.mute })}>┌─ STUDIO / SETTINGS ───────</div>
         <h1 style={{ fontFamily: DS.pixel, fontWeight: 700, fontSize: 56, letterSpacing: 1, textTransform: "uppercase",
           margin: "10px 0 26px", lineHeight: 1, color: DS.text }}>Settings</h1>
+
+        {saved && (
+          <div style={{ background: "rgba(127,183,126,0.12)", border: "1px solid #7FB77E", color: "#7FB77E", borderRadius: DS.radius,
+            padding: "11px 16px", marginBottom: 20, fontSize: 13, fontFamily: DS.mono }}>✓ Settings saved.</div>
+        )}
 
         <form action={updateSettings}>
           <Section title="BUSINESS · SHOWN ON INVOICES">

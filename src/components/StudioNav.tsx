@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { logout } from "@/app/actions";
 import { authDisabled } from "@/lib/auth";
-import { listStudioNotifications } from "@/lib/data";
+import { listStudioNotifications, getSearchIndex } from "@/lib/data";
 import NotificationBell from "@/components/NotificationBell";
+import CommandPalette from "@/components/CommandPalette";
 import { DS } from "@/lib/theme";
 
 const ITEMS = [
   { key: "overview", label: "HQ", href: "/", icon: "▚" },
+  { key: "calendar", label: "Calendar", href: "/calendar", icon: "▦" },
+  { key: "analytics", label: "Analytics", href: "/analytics", icon: "▲" },
   { key: "stylescapes", label: "Stylescapes", href: "/stylescapes", icon: "❋" },
   { key: "billing", label: "Billing", href: "/billing", icon: "€" },
   { key: "settings", label: "Settings", href: "/settings", icon: "⚙" },
 ];
 
-export default async function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" | "settings" }) {
-  const items = await listStudioNotifications();
+export default async function StudioNav({ active }: { active: "overview" | "stylescapes" | "billing" | "settings" | "calendar" | "analytics" }) {
+  const [items, searchIndex] = await Promise.all([listStudioNotifications(), getSearchIndex()]);
   const feed = { items, unread: items.filter((n) => !n.readAt).length };
   return (
     <aside style={{ width: 232, flex: "0 0 232px", background: DS.bg2, borderRight: `1px solid ${DS.border}`,
@@ -30,7 +33,11 @@ export default async function StudioNav({ active }: { active: "overview" | "styl
         <NotificationBell scope="studio" initial={feed} placement="sidebar" />
       </div>
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 22 }}>
+      <div style={{ marginTop: 16, padding: "0 2px" }}>
+        <CommandPalette index={searchIndex} />
+      </div>
+
+      <nav style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 14 }}>
         {ITEMS.map((it) => {
           const on = active === it.key;
           return (
