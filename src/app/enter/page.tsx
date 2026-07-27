@@ -2,6 +2,7 @@ import { clientLogin } from "@/app/actions";
 import { INK, PANEL, LINE, ACCENT, MUTE, PAPER, inp } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Locker Room" };
 
 export default async function EnterPage({
   searchParams,

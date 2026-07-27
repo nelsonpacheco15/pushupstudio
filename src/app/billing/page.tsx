@@ -6,6 +6,7 @@ import { DS } from "@/lib/theme";
 import { markInvoicePaid, voidInvoice } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Billing" };
 
 const mono = (extra: React.CSSProperties = {}) => ({ fontFamily: DS.mono, ...extra });
 

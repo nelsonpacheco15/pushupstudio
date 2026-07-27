@@ -4,6 +4,12 @@ import PortalBoard from "@/components/PortalBoard";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const client = await getClientByPortalToken(token);
+  return { title: client ? `${client.name} · Locker Room` : "Locker Room" };
+}
+
 export default async function PortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const client = await getClientByPortalToken(token);

@@ -2,6 +2,7 @@ import { login } from "@/app/actions";
 import { INK, PANEL, LINE, ACCENT, MUTE, PAPER, inp } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Log in" };
 
 export default async function LoginPage({
   searchParams,

@@ -7,6 +7,12 @@ import { DS } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const client = await getClientById(id);
+  return { title: client ? `${client.name} · The Circuit` : "The Circuit" };
+}
+
 export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await getClientById(id);

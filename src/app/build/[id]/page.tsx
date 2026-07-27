@@ -3,6 +3,7 @@ import { getStylescapeById, getReviews, getClientById } from "@/lib/data";
 import BuilderClient from "./BuilderClient";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Stylescape Builder" };
 
 export default async function BuildPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

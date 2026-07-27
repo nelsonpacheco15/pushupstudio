@@ -6,6 +6,7 @@ import { LAYOUTS } from "@/lib/layouts";
 import { INK, PAPER, PANEL, LINE, ACCENT, MUTE, inp } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Stylescapes" };
 
 export default async function StylescapesPage() {
   const [items, clients] = await Promise.all([listAllStylescapes(), listClients()]);

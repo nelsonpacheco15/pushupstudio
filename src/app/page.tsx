@@ -9,6 +9,7 @@ import { RunningBanner } from "@/components/LiveTimer";
 import { DS } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "HQ" };
 
 const PRI = ["Normal", "High", "Urgent"];
 const priColor = (p: number) => (p >= 2 ? DS.accent : p === 1 ? DS.amber : DS.mute);

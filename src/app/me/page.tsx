@@ -6,6 +6,7 @@ import { stripeEnabled } from "@/lib/stripe";
 import PortalBoard, { type BillingStrip } from "@/components/PortalBoard";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Locker Room" };
 
 export default async function LockerRoomPage() {
   const clientId = await getClientSession();
