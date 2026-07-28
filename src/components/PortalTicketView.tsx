@@ -2,6 +2,8 @@ import Link from "next/link";
 import { STATUSES, driveEmbed, type Ticket } from "@/lib/tickets";
 import type { ClientRecord, TicketFeedback, TicketVersion, TicketAttachment } from "@/lib/data";
 import TicketEvaluation from "@/components/TicketEvaluation";
+import NotionEmbed from "@/components/NotionEmbed";
+import { extractNotionLinks } from "@/lib/links";
 import { DS } from "@/lib/theme";
 
 /* Shared client-facing ticket view. Used by the share-link portal
@@ -25,6 +27,7 @@ export default function PortalTicketView({
 }) {
   const embed = driveEmbed(shown?.url ?? ticket.deliverableUrl);
   const accepted = shown?.status === "accepted";
+  const notionLinks = extractNotionLinks(ticket.description, ticket.form?.references);
   const t = T[client.language];
 
   // Progress + ETA
@@ -83,6 +86,12 @@ export default function PortalTicketView({
           <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginBottom: 18 }}>
             <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 10 }}>[ {t.brief} ]</div>
             <div style={{ fontSize: 13.5, color: "#CFCCC2", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ticket.description}</div>
+          </div>
+        )}
+
+        {notionLinks.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
+            {notionLinks.map((u) => <NotionEmbed key={u} url={u} />)}
           </div>
         )}
 

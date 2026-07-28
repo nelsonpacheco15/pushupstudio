@@ -9,6 +9,8 @@ import { STATUS_LABELS, STATUS_DOT, formatDuration, driveEmbed } from "@/lib/tic
 import { TimerButton } from "@/components/LiveTimer";
 import TicketActions from "@/components/TicketActions";
 import VersionManager from "@/components/VersionManager";
+import NotionEmbed from "@/components/NotionEmbed";
+import { extractNotionLinks } from "@/lib/links";
 import { createStylescapeForTicket, attachStylescapeToTicket } from "@/app/actions";
 import { INK, PANEL, LINE, ACCENT, MUTE, PAPER, ghostBtn } from "@/lib/theme";
 
@@ -65,6 +67,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const details: [string, string][] = Object.entries(ticket.form)
     .filter(([k, v]) => !["type", "deadline", "references", "src"].includes(k) && v) as [string, string][];
   const references = ticket.form.references;
+  const notionLinks = extractNotionLinks(ticket.description, references);
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: INK, color: PAPER, overflow: "hidden" }}>
@@ -192,6 +195,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
         {/* RIGHT — design, attachments, revisions */}
         <main style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "26px 30px 44px" }}>
+          {/* Notion references from the brief */}
+          {notionLinks.length > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={sectionLabel({ marginBottom: 12 })}>NOTION · {notionLinks.length}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {notionLinks.map((u) => <NotionEmbed key={u} url={u} />)}
+              </div>
+            </div>
+          )}
+
           {/* design versions + preview */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
             <div style={sectionLabel()}>DESIGN{shown ? ` · SHOWING v${shown.version}` : ""}</div>
