@@ -85,13 +85,13 @@ export default function NotificationBell({
       </button>
 
       {open && (
-        <div style={{ position: "absolute", zIndex: 200,
-          ...(placement === "sidebar"
-            ? { top: 0, left: "calc(100% + 14px)" }
-            : { top: 46, right: 0 }),
-          width: 340, maxWidth: "90vw",
+        <>
+        <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9998 }} />
+        <div style={{ position: "fixed", zIndex: 9999,
+          ...(placement === "sidebar" ? { top: 74, left: 20 } : { top: 64, right: 18 }),
+          width: 360, maxWidth: "92vw",
           background: c.bg, border: `1px solid ${c.border}`, borderRadius: 12, overflow: "hidden",
-          boxShadow: "0 16px 44px rgba(0,0,0,0.5)" }}>
+          boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${c.border}`,
             fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: 1, color: c.mute }}>
             [ NOTIFICATIONS ]
@@ -121,6 +121,7 @@ export default function NotificationBell({
             })}
           </div>
         </div>
+        </>
       )}
     </div>
   );

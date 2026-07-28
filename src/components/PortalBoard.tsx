@@ -20,7 +20,7 @@ export interface BillingStrip {
 export interface SelfService {
   plan: string; paused: boolean;
   growthLabel: string; scaleLabel: string;
-  invoices: { number: string; periodLabel: string; amountLabel: string; status: string }[];
+  invoices: { id: string; number: string; periodLabel: string; amountLabel: string; status: string }[];
 }
 
 /* The client "Locker Room" board. Shared by the public share-link portal

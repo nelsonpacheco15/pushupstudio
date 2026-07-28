@@ -224,7 +224,7 @@ export async function createClient(formData: FormData): Promise<void> {
   if (invoice) {
     await mail.emailInvoiceIssued({ ...invoice, clientName: data.name },
       { name: data.name, email: data.email ?? "", language, portalToken: data.portal_token },
-      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank } });
+      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank }, settings });
     await notify({ audience: "client", clientId: data.id, type: "invoice",
       title: `Invoice ${invoice.number}`, body: `${p.label} — ${formatEUR(amountCents)}`, link: "/me" });
   }
@@ -238,24 +238,25 @@ export async function updateClient(formData: FormData): Promise<void> {
   await requireStudio();
   const id = String(formData.get("id") || "");
   if (!id) throw new Error("Missing client.");
-  const name = String(formData.get("name") || "").trim();
-  const company = String(formData.get("company") || "").trim();
-  const email = String(formData.get("email") || "").trim();
-  const brandColor = String(formData.get("brandColor") || "").trim() || "#D2452B";
-  const brandFont = String(formData.get("brandFont") || "").trim();
   const contactsRaw = String(formData.get("contacts") || "");
-  const language = formData.get("language") === "pt" ? "pt" : "en";
-  const plan = String(formData.get("plan") || "").trim();
   const method = formData.get("method");
   const password = String(formData.get("password") || "");
   const logo = formData.get("logo");
 
-  const driveFolder = formData.get("driveFolder");
-  const patch: Record<string, unknown> = { company, email, brand_color: brandColor, brand_font: brandFont, language };
-  if (name) patch.name = name;
-  if (plan) patch.plan = plan;
+  // Only patch fields that were actually part of the submitted form — the Manage page
+  // has separate Profile and Account forms, so we must not clobber the other form's fields.
+  const patch: Record<string, unknown> = {};
+  const has = (k: string) => formData.get(k) !== null;
+  const str = (k: string) => String(formData.get(k) || "").trim();
+  if (has("name") && str("name")) patch.name = str("name");
+  if (has("company")) patch.company = str("company");
+  if (has("email")) patch.email = str("email");
+  if (has("brandColor")) patch.brand_color = str("brandColor") || "#D2452B";
+  if (has("brandFont")) patch.brand_font = str("brandFont");
+  if (has("language")) patch.language = formData.get("language") === "pt" ? "pt" : "en";
+  if (str("plan")) patch.plan = str("plan");
   if (method === "stripe" || method === "bank_transfer") patch.payment_method = method;
-  if (typeof driveFolder === "string") patch.drive_folder_url = driveFolder.trim();
+  if (has("driveFolder")) patch.drive_folder_url = str("driveFolder");
   if (password) patch.password_hash = await hashPassword(password);
   if (logo instanceof File && logo.size > 0) {
     if (!ALLOWED_IMAGE_TYPES.includes(logo.type)) throw new Error("Logo must be an image file.");
@@ -275,6 +276,7 @@ export async function updateClient(formData: FormData): Promise<void> {
   }
   revalidatePath(`/client/${id}`);
   revalidatePath("/");
+  redirect(`/client/${id}/manage?saved=1`);
 }
 
 /* ------------------------------------------------------------------ Billing */

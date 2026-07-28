@@ -29,6 +29,7 @@ textarea, input, button { font-family: inherit; }
 .studio-sidebar {
   width: 232px; flex: 0 0 232px; background: #0C0C0F; border-right: 1px solid rgba(255, 255, 255, 0.13);
   min-height: 100vh; padding: 24px 16px; display: flex; flex-direction: column; position: sticky; top: 0;
+  z-index: 40; /* keep the sidebar (and its command palette / notification popovers) above the page content */
 }
 .studio-hamburger { display: none; }
 @media (max-width: 860px) {

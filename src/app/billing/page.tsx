@@ -79,6 +79,8 @@ export default async function BillingPage() {
                 <div style={mono({ fontSize: 10.5, color: DS.mute })}>{inv.method === "stripe" ? "CARD" : "BANK"}</div>
                 <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
                   <span style={mono({ fontSize: 10.5, letterSpacing: 1, color: st.color })}>{st.label}</span>
+                  <a href={`/invoice/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Download PDF"
+                    style={{ ...mono({ fontSize: 10.5, color: DS.mute }), border: `1px solid ${DS.border}`, borderRadius: 4, padding: "5px 7px", textDecoration: "none" }}>PDF</a>
                   {inv.status === "sent" && (
                     <>
                       <form action={markInvoicePaid.bind(null, inv.id)}>

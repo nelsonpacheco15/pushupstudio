@@ -68,6 +68,7 @@ export default function LockerAccount({ selfService, language }: { selfService: 
                 <span style={{ color: MUTE, flex: 1 }}>{inv.periodLabel}</span>
                 <span style={{ fontFamily: "'IBM Plex Mono'" }}>{inv.amountLabel}</span>
                 <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: inv.status === "paid" ? "#7FB77E" : MUTE }}>{inv.status.toUpperCase()}</span>
+                <a href={`/invoice/${inv.id}/pdf`} target="_blank" rel="noreferrer" style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: MUTE, border: `1px solid ${LINE}`, borderRadius: 4, padding: "2px 6px", textDecoration: "none" }}>PDF</a>
               </div>
             ))}
           </>

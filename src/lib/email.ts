@@ -1,5 +1,5 @@
 import "server-only";
-import { getEmailFrom, getStudioEmailAddr, type Lang, type Invoice } from "@/lib/data";
+import { getEmailFrom, getStudioEmailAddr, type Lang, type Invoice, type StudioSettings } from "@/lib/data";
 import { formatEUR, planFor } from "@/lib/billing";
 
 export interface InvoiceIssuer { name: string; iban: string; bank: string; }
@@ -15,7 +15,8 @@ const BG = "#0B0B0D", CARD = "#131316", TXT = "#E9E7DE", MUT = "#8C887C", LINE =
 const MONO = "'Courier New', ui-monospace, monospace";
 const SANS = "Helvetica, Arial, sans-serif";
 
-async function send(to: string, subject: string, html: string): Promise<void> {
+type Attachment = { filename: string; content: string }; // content = base64
+async function send(to: string, subject: string, html: string, attachments?: Attachment[]): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key || !to) return;
   const from = await getEmailFrom(); // from-name/address comes from Settings (falls back to env)
@@ -23,7 +24,7 @@ async function send(to: string, subject: string, html: string): Promise<void> {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
+      body: JSON.stringify({ from, to, subject, html, ...(attachments?.length ? { attachments } : {}) }),
     });
     if (!res.ok) console.warn(`[email] send failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
   } catch (e) { console.warn("[email] error:", e); }
@@ -257,28 +258,38 @@ function bankBlock(inv: Invoice, lang: Lang, issuer: InvoiceIssuer): string {
   </div>`;
 }
 
-/** Email the invoice to the client AND to the studio (best-effort). */
+/** Email the invoice (with a PDF attached) to the client AND to the studio. */
 export async function emailInvoiceIssued(
   inv: Invoice,
   client: { name: string; email: string; language: Lang; portalToken: string },
-  opts?: { payUrl?: string; issuer?: InvoiceIssuer },
+  opts?: { payUrl?: string; issuer?: InvoiceIssuer; settings?: StudioSettings },
 ): Promise<void> {
   const issuer = opts?.issuer ?? { name: "PushUP Design", iban: "", bank: "" };
   const L = client.language;
   const plan = planFor(inv.plan);
   const t = L === "pt"
     ? { subject: `Fatura ${inv.number} · PushUP`, h: `Fatura ${inv.number}`,
-        p: `Olá ${client.name}, aqui está a fatura do teu plano ${bold(plan.label)} (${formatEUR(inv.amountCents)}/mês).`,
+        p: `Olá ${client.name}, aqui está a fatura do teu plano ${bold(plan.label)} (${formatEUR(inv.amountCents)}/mês). A fatura em PDF está em anexo.`,
         pay: "Pagar com cartão", view: "Ver no Locker Room" }
     : { subject: `Invoice ${inv.number} · PushUP`, h: `Invoice ${inv.number}`,
-        p: `Hi ${client.name}, here's your invoice for the ${bold(plan.label)} plan (${formatEUR(inv.amountCents)}/mo).`,
+        p: `Hi ${client.name}, here's your invoice for the ${bold(plan.label)} plan (${formatEUR(inv.amountCents)}/mo). The PDF invoice is attached.`,
         pay: "Pay by card", view: "View in your Locker Room" };
   const payUrl = opts?.payUrl || `${APP_URL}/me`;
   const cta = inv.method === "stripe"
     ? button(t.pay, payUrl)
     : bankBlock(inv, L, issuer) + button(t.view, `${APP_URL}/me`);
   const html = shell(heading(t.h) + para(t.p) + invoiceBody(inv, L) + cta, footer[L]);
-  await send(client.email, t.subject, html);
+
+  // Generate the branded PDF invoice and attach it.
+  let attachments: { filename: string; content: string }[] | undefined;
+  if (opts?.settings) {
+    try {
+      const { buildInvoicePdf } = await import("@/lib/invoicePdf");
+      const bytes = await buildInvoicePdf(inv, { name: client.name, company: inv.clientName, email: client.email, language: L }, opts.settings);
+      attachments = [{ filename: `${inv.number}.pdf`, content: Buffer.from(bytes).toString("base64") }];
+    } catch (e) { console.warn("[invoice pdf] failed:", (e as Error).message); }
+  }
+  await send(client.email, t.subject, html, attachments);
 
   const STUDIO_EMAIL = await getStudioEmailAddr();
   if (STUDIO_EMAIL) {
@@ -286,6 +297,6 @@ export async function emailInvoiceIssued(
     await send(STUDIO_EMAIL, `Invoice ${inv.number} — ${client.name}`,
       shell(heading(`Invoice ${inv.number}`) + para(`Issued to ${bold(client.name)}.`) +
         para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${meta} ]</span>`) +
-        invoiceBody({ ...inv, clientName: undefined }, "en") + button("Open billing", `${APP_URL}/billing`), footer.en));
+        invoiceBody({ ...inv, clientName: undefined }, "en") + button("Open billing", `${APP_URL}/billing`), footer.en), attachments);
   }
 }

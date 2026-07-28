@@ -38,8 +38,9 @@ function Section({ title, children, action }: { title: string; children: React.R
 
 const STATUS_COLOR: Record<string, string> = { paid: "#7FB77E", sent: DS.amber, void: DS.faint, draft: DS.mute };
 
-export default async function ManageClientPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ManageClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { id } = await params;
+  const saved = (await searchParams)?.saved === "1";
   const client = await getClientById(id);
   if (!client) notFound();
   const [contacts, onboarding, invoices, assets] = await Promise.all([
@@ -68,6 +69,11 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
           <h1 style={{ fontFamily: DS.display, fontWeight: 700, fontSize: 30, letterSpacing: -0.5, margin: 0 }}>{client.name}</h1>
           {paused && <span style={mono({ fontSize: 10, letterSpacing: 1, color: DS.amber, border: `1px solid ${DS.amber}`, padding: "3px 8px" })}>PAUSED</span>}
         </div>
+
+        {saved && (
+          <div style={{ background: "rgba(127,183,126,0.12)", border: "1px solid #7FB77E", color: "#7FB77E", borderRadius: DS.radius,
+            padding: "11px 16px", margin: "0 0 16px", fontSize: 13, fontFamily: DS.mono }}>✓ Saved — changes apply to the client’s dashboard, emails &amp; invoices.</div>
+        )}
 
         {/* PROFILE */}
         <Section title="PROFILE">
@@ -181,6 +187,8 @@ export default async function ManageClientPage({ params }: { params: Promise<{ i
               <span style={{ fontSize: 12.5, color: DS.mute, flex: 1 }}>{inv.periodLabel} · {planFor(inv.plan).label}</span>
               <span style={mono({ fontSize: 12.5, color: DS.text })}>{formatEUR(inv.amountCents)}</span>
               <span style={mono({ fontSize: 10.5, letterSpacing: 0.5, color: STATUS_COLOR[inv.status] ?? DS.mute, width: 54, textAlign: "right" })}>{inv.status.toUpperCase()}</span>
+              <a href={`/invoice/${inv.id}/pdf`} target="_blank" rel="noreferrer" title="Download PDF"
+                style={{ ...mono({ fontSize: 11, color: DS.mute }), border: `1px solid ${DS.border}`, borderRadius: 4, padding: "5px 8px", textDecoration: "none" }}>PDF ↓</a>
               {inv.status === "sent" && (
                 <form action={markInvoicePaid.bind(null, inv.id)}>
                   <button type="submit" style={{ background: DS.accent, color: DS.bg, border: "none", borderRadius: 4, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: DS.mono }}>Paid</button>

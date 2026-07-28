@@ -35,7 +35,7 @@ export default async function LockerRoomPage() {
     growthLabel: `Growth · ${formatEUR(settings.growthCents)}`,
     scaleLabel: `Scale · ${formatEUR(settings.scaleCents)}`,
     invoices: invoices.slice(0, 6).map((inv) => ({
-      number: inv.number, periodLabel: inv.periodLabel, amountLabel: formatEUR(inv.amountCents), status: inv.status,
+      id: inv.id, number: inv.number, periodLabel: inv.periodLabel, amountLabel: formatEUR(inv.amountCents), status: inv.status,
     })),
   } : undefined;
 

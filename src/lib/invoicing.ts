@@ -23,7 +23,7 @@ export async function issueMonthlyInvoice(
   if (invoice) {
     await mail.emailInvoiceIssued({ ...invoice, clientName: client.name },
       { name: client.name, email: client.email, language: client.language, portalToken: client.portalToken },
-      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank } });
+      { issuer: { name: settings.legalName, iban: settings.iban, bank: settings.bank }, settings });
     await notify({ audience: "client", clientId: client.id, type: "invoice",
       title: `Invoice ${invoice.number}`, body: `${planFor(client.plan).label} — ${formatEUR(amountCents)}`, link: "/me" });
   }
