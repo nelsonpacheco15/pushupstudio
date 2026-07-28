@@ -46,7 +46,10 @@ export default function PortalTicketView({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={client.logoUrl} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", border: `1px solid ${DS.border}` }} />
         )}
-        <Link href={backHref} style={{ fontFamily: DS.mono, fontSize: 12, color: DS.mute }}>{backLabel}</Link>
+        <Link href={backHref} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 600, color: DS.text,
+          border: `1px solid ${DS.border}`, borderRadius: 10, padding: "8px 14px", minHeight: 40 }}>
+          <span style={{ fontSize: 15 }}>←</span> {client.language === "pt" ? "Voltar aos meus pedidos" : "Back to my requests"}
+        </Link>
       </div>
 
       <div style={{ padding: 26, maxWidth: 860, margin: "0 auto" }}>

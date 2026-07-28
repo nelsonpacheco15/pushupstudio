@@ -1,6 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap');
-
 * { box-sizing: border-box; }
+
+/* Dropdown options must be dark-on-light-text, or they render white-on-white in some browsers. */
+select option, select optgroup {
+  background: #0C0C0F;
+  color: #E9E7DE;
+}
 
 html, body {
   margin: 0;

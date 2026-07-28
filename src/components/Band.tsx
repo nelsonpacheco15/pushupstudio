@@ -95,7 +95,7 @@ export default function Band({
                   )}
                   {r && (
                     <div style={{ position: "absolute", right: 6, top: 6, width: 26, height: 26,
-                      borderRadius: 999, background: ACCENT, color: "#fff", fontSize: 12, fontWeight: 700,
+                      borderRadius: 999, background: ACCENT, color: INK, fontSize: 12, fontWeight: 700,
                       display: "flex", alignItems: "center", justifyContent: "center" }}>{r.score}</div>
                   )}
                 </div>
