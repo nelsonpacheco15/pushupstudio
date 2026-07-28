@@ -24,8 +24,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const [client, settings] = await Promise.all([getClientById(inv.clientId), getSettings()]);
   if (!client) return NextResponse.json({ error: "client not found" }, { status: 404 });
 
-  const bytes = await buildInvoicePdf(inv, { name: client.name, company: client.company, email: client.email, language: client.language }, settings);
-  return new NextResponse(Buffer.from(bytes), {
-    headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${inv.number}.pdf"` },
-  });
+  try {
+    const bytes = await buildInvoicePdf(inv, { name: client.name, company: client.company, email: client.email, language: client.language }, settings);
+    return new NextResponse(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${inv.number}.pdf"`,
+        "Content-Length": String(bytes.length),
+      },
+    });
+  } catch (e) {
+    console.error("[invoice pdf] generation failed:", e);
+    return NextResponse.json({ error: "pdf generation failed", detail: (e as Error).message }, { status: 500 });
+  }
 }
