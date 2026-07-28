@@ -212,12 +212,21 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </div>
           </div>
 
+          {/* voice recording — the client's original audio */}
+          {attachments.filter((a) => a.kind === "audio").map((a) => (
+            <div key={a.id} style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={sectionLabel({ marginBottom: 10 })}>🎙 VOICE RECORDING</div>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio controls src={a.url} style={{ width: "100%", height: 40 }} />
+            </div>
+          ))}
+
           {/* attachments */}
-          {attachments.length > 0 && (
+          {attachments.filter((a) => a.kind !== "audio").length > 0 && (
             <div style={{ marginBottom: 22 }}>
-              <div style={sectionLabel({ marginBottom: 12 })}>CLIENT ATTACHMENTS · {attachments.length}</div>
+              <div style={sectionLabel({ marginBottom: 12 })}>CLIENT ATTACHMENTS · {attachments.filter((a) => a.kind !== "audio").length}</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
-                {attachments.map((a) => (
+                {attachments.filter((a) => a.kind !== "audio").map((a) => (
                   <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
                     style={{ display: "block", border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden", background: PANEL }}>
                     {a.kind === "image" ? (

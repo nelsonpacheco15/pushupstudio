@@ -961,10 +961,10 @@ Do two things:
 Return ONLY JSON: {"transcript": "the cleaned-up version of what the client said", "title": "a 3-6 word title in the client's language", "type": "the single best match from this exact list: [${REQUEST_TYPES.join(", ")}]", "priority": 0, "deadline": "a date or timeframe if the client mentioned one, else empty string", "references": "any links/brands/examples the client mentioned, else empty string"}
 For priority use 0 for normal, 1 for high, 2 for urgent — infer from the client's tone and any deadline.`;
 
-export interface VoiceAnalysis { transcript: string; title: string; type: string; priority: number; deadline: string; references: string; }
+export interface VoiceAnalysis { transcript: string; title: string; type: string; priority: number; deadline: string; references: string; audioUrl: string; }
 
-/** Step 1 of the client voice flow: transcribe + analyze. Returns the editable
-    transcript + suggested fields (does NOT create the ticket). */
+/** Step 1 of the client voice flow: transcribe + analyze + keep the recording.
+    Returns the editable transcript + suggested fields + the saved audio URL. */
 export async function transcribeVoiceRequest(formData: FormData): Promise<VoiceAnalysis> {
   const portalToken = String(formData.get("portalToken") || "");
   const audio = formData.get("audio");
@@ -972,6 +972,17 @@ export async function transcribeVoiceRequest(formData: FormData): Promise<VoiceA
   if (!portalToken) throw new Error("Missing portal token.");
   const client = await getClientByPortalToken(portalToken);
   if (!client) throw new Error("Invalid portal link.");
+  if (audio.size > 20 * 1024 * 1024) throw new Error("That recording is too long. Please keep it under ~3 minutes.");
+
+  // Save the actual recording so the designer can listen to it later.
+  let audioUrl = "";
+  try {
+    const ext = (audio.type || "").includes("mp4") ? "m4a" : "webm";
+    const path = `request-attachments/voice/${client.id}/${Date.now()}.${ext}`;
+    const buffer = Buffer.from(await audio.arrayBuffer());
+    const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, { contentType: audio.type || "audio/webm", upsert: true });
+    if (!upErr) audioUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  } catch { /* audio save is best-effort */ }
 
   const transcript = await groqTranscribe(audio);
   if (!transcript) throw new Error("Could not hear anything in that recording. Try again.");
@@ -984,6 +995,7 @@ export async function transcribeVoiceRequest(formData: FormData): Promise<VoiceA
     priority: Math.max(0, Math.min(2, Number(a.priority) || 0)),
     deadline: (a.deadline || "").trim(),
     references: (a.references || "").trim(),
+    audioUrl,
   };
 }
 
@@ -1001,12 +1013,16 @@ export async function submitVoiceRequest(formData: FormData): Promise<void> {
   const priority = Math.max(0, Math.min(2, Number(formData.get("priority")) || 0));
   const deadline = String(formData.get("deadline") || "").trim();
   const references = String(formData.get("references") || "").trim();
+  const audioUrl = String(formData.get("audioUrl") || "").trim();
 
   const { data: created, error } = await admin.from("tickets").insert({
     client_id: client.id, title, description,
     form: { type, deadline, references }, status: "backlog", created_by: "client", priority,
   }).select("id").single();
   if (error) throw new Error(error.message);
+
+  // Attach the original voice recording so the designer can listen.
+  if (created?.id && audioUrl) await insertTicketAttachment(created.id, audioUrl, "Voice recording", "audio");
 
   for (const email of await getClientRecipients(client.id)) {
     await mail.emailRequestReceived({ name: client.name, email, portalToken: client.portalToken, language: client.language }, title, created?.id);

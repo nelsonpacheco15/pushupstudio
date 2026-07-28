@@ -48,8 +48,8 @@ export default function TicketEvaluation({ token, ticketId, lang }: { token: str
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {Array.from({ length: 11 }, (_, i) => (
-          <button key={i} onClick={() => setScore(i)}
-            style={{ flex: 1, height: 30, borderRadius: 3, cursor: "pointer", border: "none", fontFamily: DS.mono, fontSize: 12,
+          <button key={i} onClick={() => setScore(i)} aria-label={`Score ${i}`}
+            style={{ flex: 1, height: 42, borderRadius: 4, cursor: "pointer", border: "none", fontFamily: DS.mono, fontSize: 12.5,
               fontWeight: 600, background: i <= score ? DS.accent : DS.card2, color: i <= score ? DS.bg : DS.mute }}>{i}</button>
         ))}
       </div>

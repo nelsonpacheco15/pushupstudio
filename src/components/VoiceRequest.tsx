@@ -107,6 +107,13 @@ export default function VoiceRequest({ portalToken }: { portalToken: string }) {
       {mode === "review" && analysis && (
         <form action={submit}>
           <input type="hidden" name="portalToken" value={portalToken} />
+          <input type="hidden" name="audioUrl" value={analysis.audioUrl} />
+          {analysis.audioUrl && (
+            <div style={{ marginBottom: 12 }}>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio controls src={analysis.audioUrl} style={{ width: "100%", height: 38 }} />
+            </div>
+          )}
           <div style={{ fontFamily: "'Bricolage Grotesque'", fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Review your request</div>
           <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 12 }}>Edit anything below, then send. We picked a category for you.</div>
 

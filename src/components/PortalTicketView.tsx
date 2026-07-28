@@ -83,13 +83,21 @@ export default function PortalTicketView({
           </div>
         )}
 
-        {attachments.length > 0 && (
+        {attachments.filter((a) => a.kind === "audio").map((a) => (
+          <div key={a.id} style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 16, marginBottom: 18 }}>
+            <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 10 }}>🎙 {client.language === "pt" ? "A TUA GRAVAÇÃO" : "YOUR RECORDING"}</div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <audio controls src={a.url} style={{ width: "100%", height: 38 }} />
+          </div>
+        ))}
+
+        {attachments.filter((a) => a.kind !== "audio").length > 0 && (
           <div style={{ background: DS.card, border: `1px solid ${DS.border}`, borderRadius: 4, padding: 18, marginBottom: 18 }}>
             <div style={{ fontFamily: DS.mono, fontSize: 10, letterSpacing: 0.8, color: DS.faint, marginBottom: 12 }}>
-              [ {client.language === "pt" ? "ANEXOS" : "ATTACHMENTS"} · {attachments.length} ]
+              [ {client.language === "pt" ? "ANEXOS" : "ATTACHMENTS"} · {attachments.filter((a) => a.kind !== "audio").length} ]
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
-              {attachments.map((a) => (
+              {attachments.filter((a) => a.kind !== "audio").map((a) => (
                 <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
                   style={{ display: "block", border: `1px solid ${DS.border}`, borderRadius: 4, overflow: "hidden", background: DS.bg }}>
                   {a.kind === "image"
