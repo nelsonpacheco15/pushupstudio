@@ -2,6 +2,7 @@ import "server-only";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Invoice, StudioSettings } from "@/lib/data";
 import { planFor, formatEUR } from "@/lib/billing";
+import { PUSHUP_LOGO_PNG_B64 } from "@/lib/invoiceLogo";
 
 const INK = rgb(0.04, 0.04, 0.05);
 const MUTE = rgb(0.45, 0.44, 0.4);
@@ -29,17 +30,18 @@ export async function buildInvoicePdf(
     page.drawText(s || "", { x: xRight - w, y: yy, size, font: f, color });
   };
 
-  // --- brand mark: double "push-up" chevron in black ---
-  const cx = M, cy = y - 4;
-  const chevron = (baseY: number) => {
-    page.drawLine({ start: { x: cx, y: baseY }, end: { x: cx + 9, y: baseY + 9 }, thickness: 2.4, color: INK });
-    page.drawLine({ start: { x: cx + 9, y: baseY + 9 }, end: { x: cx + 18, y: baseY }, thickness: 2.4, color: INK });
-  };
-  chevron(cy - 4); chevron(cy - 12);
-  text("PushUP Design", M + 28, y - 4, 17, bold);
-  text(settings.legalName || "PushUP Design", M + 28, y - 20, 9, font, MUTE);
-  if (settings.vat) text(`${pt ? "NIF" : "VAT"}: ${settings.vat}`, M + 28, y - 31, 9, font, MUTE);
-  if (settings.address) text(settings.address, M + 28, y - 42, 9, font, MUTE);
+  // --- brand mark: the real PushUP logo (lime square, black UP) ---
+  let logoW = 0;
+  try {
+    const png = await doc.embedPng(Buffer.from(PUSHUP_LOGO_PNG_B64, "base64"));
+    const size = 34;
+    page.drawImage(png, { x: M, y: y - size + 8, width: size, height: size });
+    logoW = size + 12;
+  } catch { logoW = 0; }
+  text("PushUP Design", M + logoW, y - 4, 17, bold);
+  text(settings.legalName || "PushUP Design", M + logoW, y - 20, 9, font, MUTE);
+  if (settings.vat) text(`${pt ? "NIF" : "VAT"}: ${settings.vat}`, M + logoW, y - 31, 9, font, MUTE);
+  if (settings.address) text(settings.address, M + logoW, y - 42, 9, font, MUTE);
 
   // --- invoice meta (right) ---
   right(pt ? "FATURA" : "INVOICE", W - M, y, 22, bold);

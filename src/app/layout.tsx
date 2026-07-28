@@ -8,8 +8,9 @@ export const metadata: Metadata = {
   },
   description: "PushUP Design — subscription design studio. Requests, boards, reviews and billing.",
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/pushup-favicon.png",
+    shortcut: "/pushup-favicon.png",
+    apple: "/pushup-apple-icon.png",
   },
 };
 
