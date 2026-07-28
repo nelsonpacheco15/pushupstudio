@@ -30,6 +30,7 @@ async function send(to: string, subject: string, html: string): Promise<void> {
 }
 
 const portalUrl = (token: string) => `${APP_URL}/portal/${token}`;
+const ticketUrl = (token: string, ticketId?: string) => ticketId ? `${APP_URL}/portal/${token}/${ticketId}` : `${APP_URL}/portal/${token}`;
 
 const nowDate = (lang: Lang) => new Date().toLocaleDateString(lang === "pt" ? "pt-PT" : "en-GB", { day: "2-digit", month: "long", year: "numeric" });
 const nowTime = (lang: Lang) => new Date().toLocaleTimeString(lang === "pt" ? "pt-PT" : "en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -122,17 +123,17 @@ export async function emailClientWelcome(c: ClientLite): Promise<void> {
       para(`<span style="font-size:13px;color:${MUT};">${t.note}</span>`), footer[L]));
 }
 
-export async function emailRequestReceived(c: ClientLite, ticketTitle: string): Promise<void> {
+export async function emailRequestReceived(c: ClientLite, ticketTitle: string, ticketId?: string): Promise<void> {
   const t = {
     en: { subject: "We got your request", h: "Request received",
-      p: `Thank you for your request. We'll start working on it as soon as possible — and the moment we do, you'll be notified. You can also follow the progress in real time in your dashboard.`, cta: "View your board" },
+      p: `Thank you for your request. We'll start working on it as soon as possible — and the moment we do, you'll be notified. You can also follow the progress in real time in your dashboard.`, cta: "Open your request" },
     pt: { subject: "Recebemos o teu pedido", h: "Pedido recebido",
-      p: `Obrigado pelo teu pedido. Vamos começar a trabalhar nele o mais rápido possível — e assim que começarmos, serás notificado. Podes também acompanhar o progresso em tempo real no teu dashboard.`, cta: "Ver o teu quadro" },
+      p: `Obrigado pelo teu pedido. Vamos começar a trabalhar nele o mais rápido possível — e assim que começarmos, serás notificado. Podes também acompanhar o progresso em tempo real no teu dashboard.`, cta: "Abrir o teu pedido" },
   }[c.language];
-  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[c.language]));
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, ticketUrl(c.portalToken, ticketId)), footer[c.language]));
 }
 
-export async function emailInProgress(c: ClientLite, ticketTitle: string): Promise<void> {
+export async function emailInProgress(c: ClientLite, ticketTitle: string, ticketId?: string): Promise<void> {
   const L = c.language;
   const t = {
     en: { subject: `We're working on "${ticketTitle}"`, h: "We're on it",
@@ -140,21 +141,21 @@ export async function emailInProgress(c: ClientLite, ticketTitle: string): Promi
     pt: { subject: `Estamos a trabalhar em "${ticketTitle}"`, h: "Estamos a tratar disso",
       p: `Boas notícias — o teu pedido está a avançar. Começámos ${bold(ticketTitle)} em ${bold(nowDate(L))} às ${bold(nowTime(L))}. Avisamos-te dentro de algumas horas quando estiver pronto. Descontrai e prepara-te para ver o teu design!`, cta: "Acompanhar progresso" },
   }[L];
-  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[L]));
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, ticketUrl(c.portalToken, ticketId)), footer[L]));
 }
 
-export async function emailReadyForReview(c: ClientLite, ticketTitle: string): Promise<void> {
+export async function emailReadyForReview(c: ClientLite, ticketTitle: string, ticketId?: string): Promise<void> {
   const t = {
     en: { subject: `Ready for your approval: "${ticketTitle}"`, h: "Ready for approval",
       p: `Your ${bold(ticketTitle)} is ready, ${c.name}. Take a look and tell us what you think.`, cta: "Review it now" },
     pt: { subject: `Pronto para aprovação: "${ticketTitle}"`, h: "Pronto para aprovação",
       p: `O teu ${bold(ticketTitle)} está pronto, ${c.name}. Dá uma vista de olhos e diz-nos o que achas.`, cta: "Rever agora" },
   }[c.language];
-  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[c.language]));
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, ticketUrl(c.portalToken, ticketId)), footer[c.language]));
 }
 
 /** Sent when the studio uploads a revised design (v2+) after a change request. */
-export async function emailNewVersion(c: ClientLite, ticketTitle: string, version: number, changeNote?: string): Promise<void> {
+export async function emailNewVersion(c: ClientLite, ticketTitle: string, version: number, changeNote?: string, ticketId?: string): Promise<void> {
   const L = c.language;
   const t = {
     en: { subject: `New version ready: "${ticketTitle}" (v${version})`, h: "New version ready",
@@ -167,18 +168,18 @@ export async function emailNewVersion(c: ClientLite, ticketTitle: string, versio
   const noteBlock = changeNote
     ? para(`<span style="font-family:${MONO};font-size:12px;color:${MUT};">[ ${t.yourReq} ]</span><br/><span style="border-left:2px solid ${LINE};padding-left:12px;display:inline-block;color:#CFCCC2;">${esc(changeNote)}</span>`)
     : "";
-  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + noteBlock + button(t.cta, portalUrl(c.portalToken)), footer[L]));
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + noteBlock + button(t.cta, ticketUrl(c.portalToken, ticketId)), footer[L]));
 }
 
-export async function emailDone(c: ClientLite, ticketTitle: string): Promise<void> {
+export async function emailDone(c: ClientLite, ticketTitle: string, ticketId?: string): Promise<void> {
   const L = c.language;
   const t = {
     en: { subject: `Completed: "${ticketTitle}"`, h: "All done",
-      p: `Hello ${c.name}, your request ${bold(ticketTitle)} was completed on ${bold(nowDate(L))}. Thank you for working with us — together we make an amazing team!`, cta: "Open your board" },
+      p: `Hello ${c.name}, your request ${bold(ticketTitle)} was completed on ${bold(nowDate(L))}. Thank you for working with us — together we make an amazing team!`, cta: "Open your request" },
     pt: { subject: `Concluído: "${ticketTitle}"`, h: "Está tudo pronto",
-      p: `Olá ${c.name}, o teu pedido ${bold(ticketTitle)} foi concluído em ${bold(nowDate(L))}. Obrigado por trabalhares connosco — juntos formamos uma equipa incrível!`, cta: "Abrir o teu quadro" },
+      p: `Olá ${c.name}, o teu pedido ${bold(ticketTitle)} foi concluído em ${bold(nowDate(L))}. Obrigado por trabalhares connosco — juntos formamos uma equipa incrível!`, cta: "Abrir o teu pedido" },
   }[L];
-  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, portalUrl(c.portalToken)), footer[L]));
+  await send(c.email, t.subject, shell(heading(t.h) + para(t.p) + button(t.cta, ticketUrl(c.portalToken, ticketId)), footer[L]));
 }
 
 /** Monthly recap: everything delivered for the client last month. */

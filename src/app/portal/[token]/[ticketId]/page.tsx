@@ -1,14 +1,17 @@
 import { notFound } from "next/navigation";
-import { getClientByPortalToken, getPortalTicket, getTicketFeedback, listTicketVersions, currentVersion, getSettings, slaHoursForPlan, listTicketAttachments } from "@/lib/data";
+import { getClientByPortalToken, getTicket, getTicketFeedback, listTicketVersions, currentVersion, getSettings, slaHoursForPlan, listTicketAttachments } from "@/lib/data";
 import PortalTicketView from "@/components/PortalTicketView";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalTicketPage({ params }: { params: Promise<{ token: string; ticketId: string }> }) {
   const { token, ticketId } = await params;
-  const [client, ticket] = await Promise.all([getClientByPortalToken(token), getPortalTicket(token, ticketId)]);
-  if (!client || !ticket) notFound();
-  const [feedback, versions, settings, attachments] = await Promise.all([getTicketFeedback(ticketId), listTicketVersions(ticketId), getSettings(), listTicketAttachments(ticketId)]);
+  // Single parallel wave — everything is keyed by token/ticketId, so fetch it all at once.
+  const [client, ticket, feedback, versions, settings, attachments] = await Promise.all([
+    getClientByPortalToken(token), getTicket(ticketId), getTicketFeedback(ticketId),
+    listTicketVersions(ticketId), getSettings(), listTicketAttachments(ticketId),
+  ]);
+  if (!client || !ticket || ticket.clientId !== client.id) notFound(); // ownership check
   const back = client.language === "pt" ? "← O teu quadro" : "← Your board";
 
   return <PortalTicketView client={client} ticket={ticket} feedback={feedback} versions={versions} attachments={attachments}

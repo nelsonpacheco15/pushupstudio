@@ -636,7 +636,7 @@ export async function createTicket(formData: FormData): Promise<void> {
   // Notify on client-submitted requests.
   if (createdBy === "client" && client) {
     for (const email of await getClientRecipients(client.id)) {
-      await mail.emailRequestReceived({ name: client.name, email, portalToken: client.portalToken, language: client.language }, title);
+      await mail.emailRequestReceived({ name: client.name, email, portalToken: client.portalToken, language: client.language }, title, created?.id);
     }
     await mail.emailStudioNewRequest(client.name, title);
     await notify({ audience: "studio", clientId, type: "new_request",
@@ -691,9 +691,9 @@ export async function moveTicket(ticketId: string, clientId: string, status: str
       const recipients = await getClientRecipients(clientId);
       for (const email of recipients) {
         const lite = { name: client.name, email, portalToken: client.portalToken, language: client.language };
-        if (status === "in_progress") await mail.emailInProgress(lite, title);
-        else if (status === "review") await mail.emailReadyForReview(lite, title);
-        else if (status === "done") await mail.emailDone(lite, title);
+        if (status === "in_progress") await mail.emailInProgress(lite, title, ticketId);
+        else if (status === "review") await mail.emailReadyForReview(lite, title, ticketId);
+        else if (status === "done") await mail.emailDone(lite, title, ticketId);
       }
 
       if (status === "in_progress") await notify({ audience: "client", clientId, type: "in_progress", title: "We're on it 💪", body: title, link: `/me/${ticketId}` });
@@ -764,8 +764,8 @@ export async function addDeliverableVersion(ticketId: string, url: string): Prom
         : "";
       for (const email of recipients) {
         const lite = { name: client.name, email, portalToken: client.portalToken, language: client.language };
-        if (n > 1) await mail.emailNewVersion(lite, title, n, changeNote);
-        else await mail.emailReadyForReview(lite, title);
+        if (n > 1) await mail.emailNewVersion(lite, title, n, changeNote, ticketId);
+        else await mail.emailReadyForReview(lite, title, ticketId);
       }
       await notify({ audience: "client", clientId: client.id, type: n > 1 ? "new_version" : "review",
         title: n > 1 ? `New version ready (v${n})` : "Your design is ready to review", body: title, link: `/me/${ticketId}` });
@@ -1008,7 +1008,9 @@ export async function submitVoiceRequest(formData: FormData): Promise<void> {
   }).select("id").single();
   if (error) throw new Error(error.message);
 
-  await mail.emailRequestReceived({ name: client.name, email: client.email, portalToken: client.portalToken, language: client.language }, title);
+  for (const email of await getClientRecipients(client.id)) {
+    await mail.emailRequestReceived({ name: client.name, email, portalToken: client.portalToken, language: client.language }, title, created?.id);
+  }
   await mail.emailStudioNewRequest(client.name, title);
   await notify({ audience: "studio", clientId: client.id, type: "new_request",
     title: `New request from ${client.name}`, body: title, link: created ? `/ticket/${created.id}` : `/client/${client.id}` });

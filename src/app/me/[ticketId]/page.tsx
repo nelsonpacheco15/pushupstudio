@@ -9,10 +9,13 @@ export default async function LockerRoomTicketPage({ params }: { params: Promise
   const { ticketId } = await params;
   const clientId = await getClientSession();
   if (!clientId) redirect("/enter");
-  const [client, ticket] = await Promise.all([getClientById(clientId), getTicket(ticketId)]);
+  // Single parallel wave.
+  const [client, ticket, feedback, versions, settings, attachments] = await Promise.all([
+    getClientById(clientId), getTicket(ticketId), getTicketFeedback(ticketId),
+    listTicketVersions(ticketId), getSettings(), listTicketAttachments(ticketId),
+  ]);
   if (!client) redirect("/enter");
   if (!ticket || ticket.clientId !== clientId) notFound(); // can only see own reps
-  const [feedback, versions, settings, attachments] = await Promise.all([getTicketFeedback(ticketId), listTicketVersions(ticketId), getSettings(), listTicketAttachments(ticketId)]);
   const back = client.language === "pt" ? "← O teu quadro" : "← Your board";
 
   return <PortalTicketView client={client} ticket={ticket} feedback={feedback} versions={versions} attachments={attachments}

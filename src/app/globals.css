@@ -19,6 +19,7 @@ textarea, input, button { font-family: inherit; }
 ::placeholder { color: #6b6659; }
 
 @keyframes ds-blink { 50% { opacity: 0; } }
+@keyframes ds-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* ---- responsive studio shell ---- */
 .studio-sidebar {
