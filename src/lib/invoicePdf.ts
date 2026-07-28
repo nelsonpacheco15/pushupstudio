@@ -23,11 +23,14 @@ export async function buildInvoicePdf(
   const M = 52; // margin
   let y = 792;
 
+  // The standard PDF font only encodes WinAnsi (Latin-1 + €); strip emoji / other symbols.
+  const safe = (s: string) => (s || "").replace(/[^\x00-\xFF€]/g, "");
   const text = (s: string, x: number, yy: number, size: number, f = font, color = INK) =>
-    page.drawText(s || "", { x, y: yy, size, font: f, color });
+    page.drawText(safe(s), { x, y: yy, size, font: f, color });
   const right = (s: string, xRight: number, yy: number, size: number, f = font, color = INK) => {
-    const w = f.widthOfTextAtSize(s || "", size);
-    page.drawText(s || "", { x: xRight - w, y: yy, size, font: f, color });
+    const clean = safe(s);
+    const w = f.widthOfTextAtSize(clean, size);
+    page.drawText(clean, { x: xRight - w, y: yy, size, font: f, color });
   };
 
   // --- brand mark: the real PushUP logo (lime square, black UP) ---
@@ -102,7 +105,7 @@ export async function buildInvoicePdf(
   // --- footer ---
   const appUrl = (process.env.APP_URL || "").replace(/^https?:\/\//, "");
   page.drawLine({ start: { x: M, y: 70 }, end: { x: W - M, y: 70 }, thickness: 0.8, color: LINE });
-  text(pt ? "Obrigado por trabalhares com a PushUP Design. 💪" : "Thank you for working with PushUP Design.", M, 54, 9, font, MUTE);
+  text(pt ? "Obrigado por trabalhares com a PushUP Design." : "Thank you for working with PushUP Design.", M, 54, 9, font, MUTE);
   if (appUrl) right(appUrl, W - M, 54, 9, font, MUTE);
 
   return doc.save();
